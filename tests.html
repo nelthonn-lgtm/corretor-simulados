@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Testes — Corretor de Simulados A×B</title>
+  <link rel="stylesheet" href="css/estilo.css">
+  <style>
+    .teste { background: #fff; border-radius: 12px; border: 3px solid var(--borda); padding: 10px 14px; margin: 10px 0; }
+    .teste.passou { border-color: #58b673; }
+    .teste.falhou { border-color: #e2685d; }
+    .teste ul { margin: 6px 0 0; padding-left: 1.2em; font-size: 0.9rem; }
+    .teste li.nao { color: var(--verm); font-weight: 700; }
+    #placar-testes { font-size: 1.3rem; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <header class="topo"><a href="index.html" class="marca">Corretor de Simulados A×B</a><span class="sub">testes automáticos</span></header>
+  <main>
+    <h1>Testes</h1>
+    <p class="suave">Rodam neste navegador com um armazenamento temporário na memória: não leem nem apagam os seus dados.</p>
+    <div id="placar-testes" class="alerta info">Rodando…</div>
+    <div id="resultados"></div>
+  </main>
+  <div id="app" hidden></div>
+
+  <script src="js/nucleo.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var N = Nucleo, D = Dados;
+    D.usarBackend(D.backendMemoria());
+
+    var resultados = [];
+    function teste(num, nome, fn) {
+      var checks = [];
+      function ok(cond, desc) { checks.push({ ok: !!cond, desc: desc }); }
+      function igual(obtido, esperado, desc) {
+        ok(obtido === esperado, desc + ' — esperado: ' + JSON.stringify(esperado) + '; obtido: ' + JSON.stringify(obtido));
+      }
+      try { fn(ok, igual); } catch (e) { checks.push({ ok: false, desc: 'Erro durante o teste: ' + e.message }); }
+      resultados.push({ num: num, nome: nome, checks: checks, ok: checks.length > 0 && checks.every(function (c) { return c.ok; }) });
+    }
+
+    /* ---------- auxiliares ---------- */
+
+    function concJucurutu() { return D.labInicial('B').concursos[0]; }
+
+    /** Simulado de Jucurutu com N acertos por bloco (as primeiras N questões de cada bloco certas). */
+    function simuladoJucurutu(acertosPorBloco, data, id) {
+      var conc = concJucurutu();
+      var qs = N.questoesEmBranco(conc.blocos), cont = [0, 0, 0, 0, 0];
+      qs.forEach(function (q) {
+        q.gabarito = 'A';
+        if (cont[q.bloco] < acertosPorBloco[q.bloco]) { q.marcada = 'A'; q.confianca = 'C'; q.eliminacao = true; cont[q.bloco]++; }
+        else { q.marcada = 'B'; q.confianca = 'D'; q.eliminacao = true; q.causa = 'nao_sabia'; }
+      });
+      return { id: id || 'sim-teste', concursoId: conc.id, data: data || '2026-10-05', minutos: 180, regras: N.regrasDoConcurso(conc), questoes: qs, criadoEm: (data || '2026-10-05') + 'T10:00:00.000Z' };
+    }
+
+    /* ---------- 1 ---------- */
+    teste(1, 'Jucurutu com 7/4/4/13/12 acertos por bloco = 40 acertos = 81,5 pontos, não eliminado, acima da meta', function (ok, igual) {
+      var sim = simuladoJucurutu([7, 4, 4, 13, 12]);
+      var c = N.corrigir(sim);
+      igual(c.total.acertos, 40, 'acertos totais');
+      igual(c.total.validas, 50, 'questões válidas (denominador)');
+      igual(c.total.pontos, 81.5, 'pontos');
+      igual(N.fmtNum(c.total.pontos), '81,5', 'pontos formatados');
+      igual(c.total.pontosPossiveis, 100, 'pontos possíveis');
+      igual(c.blocos.map(function (b) { return b.acertos; }).join('/'), '7/4/4/13/12', 'acertos por bloco');
+      igual(c.eliminado, false, 'não eliminado');
+      igual(c.vermelho.length, 0, 'nenhum alerta vermelho');
+      ok(c.meta && c.meta.atingiu && c.meta.distancia === -1.5, 'acima da meta de 80 por 1,5 ponto (distância ' + (c.meta && c.meta.distancia) + ')');
+      igual(N.textoMeta(c.meta), '1,5 pontos acima da meta de 80.', 'texto da meta');
+      igual(N.fmtPct(c.total.acertos, c.total.validas), '40/50 = 80%', 'percentual com denominador');
+      igual(N.pendenciasSimulado(sim, sim.regras).length, 0, 'simulado completo não tem pendências');
+    });
+
+    /* ---------- 2 ---------- */
+    teste(2, 'Jucurutu com 0 acertos em Tecnologia e todo o resto certo → eliminado por zero em disciplina', function (ok, igual) {
+      var c = N.corrigir(simuladoJucurutu([10, 0, 5, 15, 15]));
+      igual(c.total.pontos, 94.5, 'pontos (acima do mínimo de 70)');
+      igual(c.eliminado, true, 'eliminado');
+      igual(c.vermelho.length, 1, 'um único motivo de eliminação');
+      ok(/Zero em Tecnologia na Educação/.test(c.vermelho[0] || ''), 'motivo: zero em Tecnologia na Educação — "' + c.vermelho[0] + '"');
+      ok(c.amarelo.some(function (m) { return m.indexOf('Tecnologia na Educação') === 0; }), 'bloco zerado também aparece abaixo de 20%');
+      var abaixo = N.corrigir(simuladoJucurutu([10, 5, 5, 9, 9]));
+      ok(abaixo.eliminado && abaixo.total.pontos === 68.8 && /abaixo do mínimo/.test(abaixo.vermelho[0]), 'e com 68,8 pontos (sem zerar bloco) elimina por ficar abaixo do mínimo (' + abaixo.total.pontos + ')');
+    });
+
+    /* ---------- 3 ---------- */
+    teste(3, 'Questão anulada não entra no total nem no denominador', function (ok, igual) {
+      var sim = simuladoJucurutu([7, 4, 4, 13, 12]);
+      sim.questoes[0].anulada = true; sim.questoes[0].gabarito = ''; sim.questoes[0].justificativa = 'anulada pela banca'; // era acerto
+      sim.questoes[9].anulada = true; sim.questoes[9].gabarito = ''; sim.questoes[9].justificativa = 'anulada pela banca'; // era erro
+      var c = N.corrigir(sim);
+      igual(c.total.validas, 48, 'denominador sem as 2 anuladas');
+      igual(c.total.acertos, 39, 'acertos sem a anulada que estava certa');
+      igual(c.total.anuladas, 2, 'anuladas registradas');
+      igual(c.blocos[0].validas, 8, 'denominador do bloco de Língua Portuguesa');
+      igual(c.total.pontosPossiveis, 97.8, 'pontos possíveis sem as anuladas');
+      igual(c.total.pontos, 80.4, 'pontos sem a anulada');
+      igual(c.anuladas.length, 2, 'anuladas listadas com justificativa');
+      igual(c.anuladas[0].justificativa, 'anulada pela banca', 'justificativa guardada');
+      sim.questoes[0].justificativa = '';
+      ok(N.pendenciasSimulado(sim, sim.regras).some(function (p) { return /Q1: questão anulada precisa de justificativa/.test(p); }), 'anulada sem justificativa não pode ser salva');
+    });
+
+    /* ---------- 4 ---------- */
+    teste(4, 'Caixas B: erro na caixa 4 volta para a 1; acerto CH na caixa 2 fica na 2; acerto C na caixa 2 vai para a 3', function (ok, igual) {
+      igual(N.moverCaixa(4, 'errou', '', 5), 1, 'erro na caixa 4');
+      igual(N.moverCaixa(2, 'acertou', 'CH', 5), 2, 'acerto com CH na caixa 2');
+      igual(N.moverCaixa(2, 'acertou', 'C', 5), 3, 'acerto com C na caixa 2');
+      igual(N.moverCaixa(5, 'acertou', 'C', 5), 5, 'acerto na última caixa fica na última');
+      // Fluxo completo com o estado do laboratório
+      var lab = D.labInicial('B');
+      lab.simulados.push(simuladoJucurutu([10, 5, 5, 15, 14], '2026-10-01', 'sim-cx')); // erra a Q50 (Conhecimentos Pedagógicos)
+      function rev(data, res, conf, i) { lab.revisoes.push({ id: 'r' + i, linha: 'Conhecimentos Pedagógicos', data: data, resultado: res, confianca: conf, causa: res === 'errou' ? 'distrator' : '', questaoNova: true, criadoEm: data + 'T12:00:0' + i + '.000Z' }); }
+      function caixa() { return N.estadoCaixasB(lab)[0]; }
+      igual(caixa().caixa, 1, 'erro no simulado leva a linha para a caixa 1');
+      igual(caixa().proxima, '2026-10-02', 'caixa 1 = 1 dia');
+      rev('2026-10-02', 'acertou', 'C', 1); igual(caixa().caixa, 2, 'acerto C: caixa 1 → 2');
+      rev('2026-10-05', 'acertou', 'CH', 2); igual(caixa().caixa, 2, 'acerto CH na caixa 2: continua na 2');
+      igual(caixa().proxima, '2026-10-08', 'fica na 2 com nova data (+3 dias)');
+      rev('2026-10-08', 'acertou', 'C', 3); igual(caixa().caixa, 3, 'acerto C na caixa 2: vai para a 3');
+      rev('2026-10-15', 'acertou', 'D', 4); igual(caixa().caixa, 4, 'acerto D (sem chute) na caixa 3: vai para a 4');
+      igual(caixa().proxima, '2026-10-31', 'caixa 4 = 16 dias');
+      rev('2026-10-31', 'errou', '', 5); igual(caixa().caixa, 1, 'erro na caixa 4: volta para a 1');
+    });
+
+    /* ---------- 5 ---------- */
+    teste(5, 'D0/D2/D7/D21: erro em 01/10/2026 gera D2 03/10, D7 08/10, D21 22/10; erro no D7 abre novo ciclo', function (ok, igual) {
+      var cfg = N.CONFIG_PADRAO.A;
+      var item = { id: 'x', data: '2026-10-01' };
+      var e = N.estadoItemA(item, [], cfg);
+      igual(e.cicloAtual.etapas.map(function (x) { return x.nome + ' ' + N.fmtData(x.data); }).join(', '),
+        'D0 01/10/2026, D2 03/10/2026, D7 08/10/2026, D21 22/10/2026', 'datas do primeiro ciclo');
+      var regs = [
+        { itemId: 'x', data: '2026-10-01', resultado: 'acertou', questaoNova: false, criadoEm: '2026-10-01T10:00:00Z' },
+        { itemId: 'x', data: '2026-10-03', resultado: 'acertou', questaoNova: true, criadoEm: '2026-10-03T10:00:00Z' },
+        { itemId: 'x', data: '2026-10-08', resultado: 'errou', questaoNova: true, causa: 'distrator', criadoEm: '2026-10-08T10:00:00Z' }
+      ];
+      e = N.estadoItemA(item, regs, cfg);
+      igual(e.numCiclo, 2, 'erro no D7 abre o ciclo 2');
+      igual(e.cicloAtual.inicio, '2026-10-08', 'novo ciclo começa na data do erro');
+      igual(e.cicloAtual.etapas.map(function (x) { return x.nome + ' ' + N.fmtData(x.data); }).join(', '),
+        'D0 08/10/2026, D2 10/10/2026, D7 15/10/2026, D21 29/10/2026', 'datas do novo ciclo');
+      igual(e.proxima.nome, 'D0', 'próxima etapa é o D0 do novo ciclo');
+      igual(e.fechado, false, 'erro continua aberto');
+      // D21 só fecha com acerto em questão nova
+      var ciclo = [
+        { data: '2026-10-01', resultado: 'acertou', questaoNova: false, criadoEm: 'a1' },
+        { data: '2026-10-03', resultado: 'acertou', questaoNova: true, criadoEm: 'a2' },
+        { data: '2026-10-08', resultado: 'acertou', questaoNova: true, criadoEm: 'a3' },
+        { data: '2026-10-22', resultado: 'acertou', questaoNova: false, criadoEm: 'a4' }
+      ];
+      igual(N.estadoItemA(item, ciclo, cfg).fechado, false, 'D21 acertado em questão repetida NÃO fecha');
+      ciclo.push({ data: '2026-10-23', resultado: 'acertou', questaoNova: true, criadoEm: 'a5' });
+      var f = N.estadoItemA(item, ciclo, cfg);
+      ok(f.fechado && f.dataFechamento === '2026-10-23', 'D21 acertado em questão nova fecha o erro');
+      // Regra editável: com "novo ciclo" desligado, errar no D7 segue para o D21
+      var semCiclo = N.estadoItemA(item, regs, { intervalos: [0, 2, 7, 21], novoCicloAoErrar: false });
+      ok(semCiclo.numCiclo === 1 && semCiclo.proxima.nome === 'D21', 'regra editável: sem novo ciclo, segue para o D21');
+      // Fluxo completo a partir de um simulado do Laboratório A
+      var lab = D.labInicial('A');
+      lab.concursos[0].blocos = [{ nome: 'Bloco X', numQuestoes: 2, pontosPorQuestao: 1, assuntos: [] }];
+      lab.concursos[0].numAlternativas = 4;
+      var s = { id: 's1', concursoId: lab.concursos[0].id, data: '2026-10-01', minutos: 30, regras: N.regrasDoConcurso(lab.concursos[0]),
+        questoes: [{ n: 1, bloco: 0, gabarito: 'A', anulada: false, marcada: 'B', assunto: '', confianca: 'D', eliminacao: true, par: '', causa: 'leu_errado' },
+                   { n: 2, bloco: 0, gabarito: 'C', anulada: false, marcada: 'C', assunto: '', confianca: 'C', eliminacao: true, par: '', causa: '' }], criadoEm: 'z' };
+      lab.simulados.push(s);
+      var est = N.estadoRevisoesA(lab);
+      igual(est.length, 1, 'cada erro gera um item (1 erro → 1 item)');
+      var linha = N.linhaCaderno(est[0]);
+      igual(linha, '01/10/2026 | CE | Bloco X | — | B | A | leu errado o enunciado | treino de leitura de comando | 03/10/2026 | 08/10/2026 | 22/10/2026 | aberto (ciclo 1; próxima: D0 em 01/10/2026)', 'linha para o CADERNO_DE_ERROS no formato pedido');
+      igual(linha.split(' | ').length, 12, 'linha tem os 12 campos');
+    });
+
+    /* ---------- 6 ---------- */
+    teste(6, 'Acerto com CH ou sem eliminação escrita é classificado como RISCO', function (ok, igual) {
+      igual(N.classificar({ gabarito: 'A', marcada: 'A', confianca: 'CH', eliminacao: true }), 'RISCO', 'acerto com CH (com eliminação)');
+      igual(N.classificar({ gabarito: 'A', marcada: 'A', confianca: 'C', eliminacao: false }), 'RISCO', 'acerto com C sem eliminação escrita');
+      igual(N.classificar({ gabarito: 'A', marcada: 'A', confianca: 'D', eliminacao: false }), 'RISCO', 'acerto com D sem eliminação escrita');
+      igual(N.classificar({ gabarito: 'A', marcada: 'A', confianca: 'C', eliminacao: true }), 'ACERTO', 'acerto com C e eliminação escrita não é RISCO');
+      igual(N.classificar({ gabarito: 'A', marcada: 'B', confianca: 'C', eliminacao: true }), 'ERRO', 'erro continua erro');
+      var sim = simuladoJucurutu([7, 4, 4, 13, 12]);
+      sim.questoes[0].confianca = 'CH'; sim.questoes[1].eliminacao = false;
+      var c = N.corrigir(sim);
+      igual(c.total.risco, 2, 'dois acertos RISCO na correção');
+      igual(c.total.pontos, 81.5, 'RISCO continua contando ponto na nota');
+      igual(c.blocos[0].risco, 2, 'RISCO aparece no bloco');
+    });
+
+    /* ---------- 7 ---------- */
+    teste(7, 'Ponto por hora: 5,2 pontos e 120 minutos = 2,6 pontos/hora; assunto sem minutos = "sem medição"', function (ok, igual) {
+      var lab = D.labInicial('B');
+      var sim = simuladoJucurutu([10, 5, 5, 15, 0], '2026-10-05', 'sim-pph');
+      // Conhecimentos Pedagógicos: Q36 e Q37 certas em Piaget (2 × 2,6 = 5,2); Q38 certa em Vygotsky
+      [35, 36].forEach(function (i) { var q = sim.questoes[i]; q.assunto = 'Piaget'; q.marcada = 'A'; q.confianca = 'C'; q.causa = ''; });
+      var q38 = sim.questoes[37]; q38.assunto = 'Vygotsky'; q38.marcada = 'A'; q38.confianca = 'C'; q38.causa = '';
+      lab.simulados.push(sim);
+      lab.sessoes.push({ id: 'ses1', data: '2026-10-03', concursoId: 'jucurutu-rn', concursoNome: 'Jucurutu/RN', itens: [{ assunto: 'Piaget', bloco: 'Conhecimentos Pedagógicos', minutos: 120, questoes: 0, acertos: 0, erros: [] }], criadoEm: 'x' });
+      var per = N.periodoPlacar({ primeiraSessaoB: '2026-10-01' }, D.labInicial('A'), lab, '2026-10-31');
+      var pph = N.pontoPorHora(lab, per);
+      var piaget = pph.linhas.filter(function (l) { return l.assunto === 'Piaget'; })[0];
+      var vyg = pph.linhas.filter(function (l) { return l.assunto === 'Vygotsky'; })[0];
+      igual(piaget.pontos, 5.2, 'pontos de Piaget no simulado');
+      igual(piaget.minutos, 120, 'minutos de Piaget');
+      igual(piaget.valor, 2.6, 'ponto por hora de Piaget');
+      igual(N.textoPph(piaget.pontos, piaget.minutos, piaget.valor), '5,2 pts ÷ 2 h (120 min) = 2,6 pts/h', 'mostra numerador e denominador');
+      igual(vyg.valor, null, 'Vygotsky sem minutos não vira número');
+      igual(N.textoPph(vyg.pontos, vyg.minutos, vyg.valor), 'sem medição', 'Vygotsky aparece como "sem medição"');
+      ok(vyg.valor !== 0, 'assunto sem minutos nunca aparece como zero');
+    });
+
+    /* ---------- 8 ---------- */
+    teste(8, 'Critério de vitória: A ganha em ponto por hora e perde em retenção → "ganho de curto prazo, não é vitória"', function (ok, igual) {
+      function n(pph, ac, tot, custo) { return { pph: { valor: pph }, retencao: { acertos: ac, total: tot }, custo: { media: custo } }; }
+      var v = N.veredito(n(3, 5, 10, 60), n(2, 8, 10, 30));
+      igual(v.tipo, 'curto_prazo', 'tipo do veredito');
+      igual(v.metodo, 'A', 'método com ganho de curto prazo');
+      ok(/ganho de curto prazo, não é vitória/.test(v.texto), 'texto: "' + v.texto + '"');
+      igual(N.veredito(n(3, 5, 10, 60), n(2, 5, 10, 30)).tipo, 'curto_prazo', 'retenção igual também é só ganho de curto prazo');
+      var vit = N.veredito(n(3, 9, 10, 60), n(2, 5, 10, 30));
+      ok(vit.tipo === 'vitoria' && vit.metodo === 'A', 'ganhar nas duas = vitória');
+      var bCurto = N.veredito(n(2, 9, 10, 60), n(3, 5, 10, 30));
+      ok(bCurto.tipo === 'curto_prazo' && bCurto.metodo === 'B', 'vale para os dois lados: B ganha em ponto por hora e perde em retenção → curto prazo');
+      var emp = N.veredito(n(2, 9, 10, 60), n(2, 5, 10, 30));
+      ok(emp.tipo === 'empate' && emp.texto === 'EMPATE — fique com o mais barato de operar' && emp.maisBarato === 'B', 'caso contrário (ponto por hora igual): EMPATE, e aponta o mais barato de operar (B)');
+      // Antes da janela 2 o veredito fica bloqueado
+      var per = { inicio: '2026-10-01', j1: '2026-10-29', j2: '2026-11-26' };
+      igual(N.faseJanela(per, '2026-10-20').fase, 'antes_j1', 'antes da janela 1');
+      igual(N.faseJanela(per, '2026-11-01').fase, 'j1', 'na janela 1');
+      igual(N.faseJanela(per, '2026-11-26').fase, 'j2', 'na janela 2');
+    });
+
+    /* ---------- 9 ---------- */
+    teste(9, 'Dados do Laboratório A não aparecem em nenhuma tela do B, e vice-versa', function (ok, igual) {
+      N.fixarHoje('2026-10-10');
+      function montar(L) {
+        var M = 'MARCA_' + L + '_';
+        var lab = D.labInicial(L);
+        lab.concursos = [{ id: M + 'conc', nome: M + 'CONCURSO', lab: L, banca: M + 'BANCA', dataProva: '2026-12-01', numAlternativas: 4, minimoPontos: 5, zeroElimina: true, meta: 8, alvo: M + 'ALVO',
+          blocos: [{ nome: M + 'BLOCO', numQuestoes: 4, pontosPorQuestao: 2, assuntos: [M + 'LINHA'] }] }];
+        lab.pares = [M + 'PAR'];
+        var R = N.regrasDoConcurso(lab.concursos[0]);
+        lab.simulados = [{ id: M + 'sim', concursoId: M + 'conc', data: '2026-10-01', minutos: 40, regras: R, criadoEm: '2026-10-01T10:00:00Z',
+          questoes: [
+            { n: 1, bloco: 0, gabarito: 'A', anulada: false, justificativa: '', marcada: 'B', assunto: M + 'LINHA', confianca: 'D', eliminacao: true, par: M + 'PAR', causa: 'distrator' },
+            { n: 2, bloco: 0, gabarito: 'B', anulada: false, justificativa: '', marcada: 'B', assunto: M + 'LINHA', confianca: 'C', eliminacao: true, par: '', causa: '' },
+            { n: 3, bloco: 0, gabarito: '', anulada: true, justificativa: M + 'JUSTIFICATIVA', marcada: '', assunto: '', confianca: '', eliminacao: false, par: '', causa: '' },
+            { n: 4, bloco: 0, gabarito: 'C', anulada: false, justificativa: '', marcada: '', assunto: '', confianca: '', eliminacao: false, par: '', causa: 'chute' }] }];
+        lab.sessoes = [{ id: M + 'ses', data: '2026-10-02', concursoId: M + 'conc', concursoNome: M + 'CONCURSO', alvo: M + 'ALVO',
+          itens: [{ assunto: M + 'SESSAO', bloco: '', minutos: 50, questoes: 3, acertos: 2, erros: [{ confianca: 'C', causa: 'desatencao', marcou: 'A', gabarito: 'D' }] }], criadoEm: '2026-10-02T10:00:00Z' }];
+        lab.operacao = [{ id: M + 'op', data: '2026-10-02', minutos: 15, nota: M + 'OPERACAO', criadoEm: 'x' }];
+        lab.rascunho = App.novoRascunho(lab.concursos[0]);
+        lab.rascunho.gabTexto = M + 'RASCUNHO';
+        lab.rascunhoSessao = { data: '2026-10-09', concursoId: M + 'conc', itens: [{ assunto: M + 'RASCSESSAO', minutos: '5', questoes: '', acertos: '', erros: [] }] };
+        if (L === 'A') lab.revisoes = [{ id: 'r1', itemId: M + 'sim:q1', etapa: 'D0', ciclo: 1, data: '2026-10-01', resultado: 'acertou', questaoNova: false, causa: '', criadoEm: 'y' }];
+        else { lab.revisoes = [{ id: 'r1', linha: M + 'LINHA', data: '2026-10-02', resultado: 'acertou', confianca: 'C', causa: '', questaoNova: true, criadoEm: '2026-10-02T11:00:00Z' }]; lab.entradasCaixas = [{ id: 'e1', linha: M + 'ENTRADA', data: '2026-10-03', criadoEm: 'z' }]; }
+        D.salvarLab(lab);
+        return lab;
+      }
+      var labs = { A: montar('A'), B: montar('B') };
+      var telas = ['', 'lancar', 'simulados', 'simulado/MARCA_X_sim', 'sessoes', 'operacao', 'revisoes', 'drive', 'concursos', 'config'];
+      ['A', 'B'].forEach(function (L) {
+        var O = L === 'A' ? 'B' : 'A';
+        telas.forEach(function (t) {
+          var html = App.htmlDaTela('#/' + L + '/' + t.replace('X', L));
+          ok(html.indexOf('MARCA_' + O) < 0, 'tela "' + (t.replace('X', L) || 'painel') + '" do ' + L + ' não mostra nada do ' + O);
+        });
+        var todas = telas.map(function (t) { return App.htmlDaTela('#/' + L + '/' + t.replace('X', L)); }).join('');
+        ['CONCURSO', 'LINHA', 'PAR', 'SESSAO', 'OPERACAO', 'RASCUNHO', 'JUSTIFICATIVA'].forEach(function (m) {
+          ok(todas.indexOf('MARCA_' + L + '_' + m) >= 0, 'controle: as telas do ' + L + ' mostram o próprio dado ' + m);
+        });
+        var per = N.periodoPlacar({ primeiraSessaoB: '2026-10-01' }, L === 'A' ? labs.A : { sessoes: [] }, L === 'B' ? labs.B : { sessoes: [] }, N.hoje());
+        var exp = N.mdEstadoLab(D.lab(L), per, N.hoje()) + N.csvLab(D.lab(L)) + N.mdSimulado(D.lab(L), D.lab(L).simulados[0]);
+        ok(exp.indexOf('MARCA_' + O) < 0, 'exportações do ' + L + ' (estado .md, planilha .csv, relatório .md) não têm dados do ' + O);
+        var bruto = D.PREFIXO + 'lab' + L;
+        ok(JSON.stringify(D.lab(L)).indexOf('MARCA_' + O) < 0, 'armazenamento "' + bruto + '" não guarda dados do ' + O);
+      });
+      var placar = App.htmlDaTela('#/placar');
+      ok(placar.indexOf('MARCA_A_') >= 0 && placar.indexOf('MARCA_B_') >= 0, 'o Placar A×B é a única tela que lê os dois lados');
+      ok(placar.indexOf(N.RESSALVA_PLACAR) >= 0, 'o placar mostra a ressalva no topo');
+      ok(placar.indexOf(N.FRASE_BLOQUEIO) >= 0, 'antes da janela 2, veredito bloqueado com a frase pedida');
+      N.fixarHoje(null);
+    });
+
+    /* ---------- 10 ---------- */
+    teste(10, 'Exportar e importar backup devolve exatamente o mesmo estado', function (ok, igual) {
+      D.salvarGeral({ versao: 1, primeiraSessaoB: '2026-10-01' });
+      var antes = JSON.stringify(D.estadoCompleto());
+      ok(antes.indexOf('MARCA_A_') >= 0 && antes.indexOf('MARCA_B_') >= 0, 'estado de partida tem dados nos dois laboratórios');
+      var arquivo = JSON.stringify(D.exportarBackup(), null, 2);
+      D.limparTudo();
+      ok(JSON.stringify(D.estadoCompleto()) !== antes, 'depois de limpar, o estado é outro');
+      var invalido = JSON.parse(arquivo); invalido.labs.B.lab = 'A';
+      var recusou = false;
+      try { D.importarBackup(invalido); } catch (e) { recusou = true; }
+      ok(recusou, 'backup corrompido é recusado');
+      D.importarBackup(JSON.parse(arquivo));
+      var depois = JSON.stringify(D.estadoCompleto());
+      igual(depois === antes, true, 'estado depois de importar é idêntico ao de antes');
+      var segundo = JSON.parse(JSON.stringify(D.exportarBackup())); delete segundo.exportadoEm;
+      var primeiro = JSON.parse(arquivo); delete primeiro.exportadoEm;
+      igual(JSON.stringify(segundo), JSON.stringify(primeiro), 'exportar de novo gera o mesmo arquivo (fora a data de exportação)');
+    });
+
+    /* ---------- extras ---------- */
+    teste('extra', 'Colar gabarito e marcações como sequência de letras', function (ok, igual) {
+      var g = N.lerSequencia('ab cde*\nX', 5, 'gabarito');
+      igual(g.valores.join(','), 'A,B,C,D,E,*,*', 'gabarito com anuladas (* e X)');
+      var m = N.lerSequencia('AB-.E', 5, 'marcacao');
+      igual(m.valores.join(','), 'A,B,,,E', 'marcações com em branco (- e .)');
+      igual(N.lerSequencia('ABF', 5, 'gabarito').invalidos.join(''), 'F', 'letra fora das alternativas é recusada');
+    });
+
+    teste('extra', 'Concursos pré-cadastrados e bloqueio dos concursos sem blocos', function (ok, igual) {
+      var A = D.labInicial('A'), B = D.labInicial('B');
+      var j = B.concursos[0];
+      igual(N.totalPontos(j.blocos), 100, 'Jucurutu soma 100 pontos');
+      igual(N.totalQuestoes(j.blocos), 50, 'Jucurutu tem 50 questões');
+      igual(j.blocos[4].assuntos.join(', '), 'Piaget, Vygotsky, Libâneo, Paulo Freire, Ivani Fazenda, Saviani, Emília Ferreiro, Jussara Hoffmann', 'linhas de Conhecimentos Pedagógicos');
+      igual(B.pares.length, 4, 'quatro pares vizinhos no B');
+      igual(A.pares.length, 0, 'nenhum par inventado no A');
+      A.concursos.forEach(function (c) {
+        ok(c.blocos.length === 0 && c.numAlternativas === null && c.minimoPontos === null && c.zeroElimina === null && c.meta === null, c.nome + ' em branco (sem pesos, alternativas ou regras inventadas)');
+        ok(N.bloqueiosLancamento(c).indexOf('preencher pelo edital antes de lançar simulado') >= 0, c.nome + ': lançamento bloqueado com o aviso');
+      });
+      igual(N.bloqueiosLancamento(j).length, 0, 'Jucurutu pode lançar');
+    });
+
+    teste('extra', 'Todo percentual vem com denominador', function (ok, igual) {
+      igual(N.fmtPct(12, 20), '12/20 = 60%', '12/20');
+      igual(N.fmtPct(2, 3), '2/3 = 66,7%', '2/3');
+      igual(N.fmtPct(0, 0), '0/0 (sem dados)', 'sem denominador não inventa percentual');
+    });
+
+    teste('extra', 'Registro para o 11_ESTADO_B e nome do relatório do simulado', function (ok, igual) {
+      var lab = D.labInicial('B');
+      var sim = simuladoJucurutu([10, 5, 5, 15, 14], '2026-10-05', 'sim-reg');
+      sim.questoes[49].assunto = 'Piaget'; sim.questoes[48].assunto = 'Piaget';
+      lab.simulados.push(sim);
+      lab.sessoes.push({ id: 's', data: '2026-10-05', concursoId: 'jucurutu-rn', concursoNome: 'Jucurutu/RN', itens: [{ assunto: 'Piaget', bloco: 'Conhecimentos Pedagógicos', minutos: 30, questoes: 4, acertos: 3, erros: [{ confianca: 'D', causa: 'leu_errado' }] }], criadoEm: 'q' });
+      igual(N.registroEstadoB(lab, 'Piaget', '2026-10-05'),
+        '05/10/2026 | Piaget | questões: 6 | acertos: 4/6 = 66,7% | causa de cada erro: não sabia o conteúdo; leu errado o enunciado | caixa atual: 1 (próxima revisão 06/10/2026) | minutos: 30',
+        'registro com data, linha, questões, acertos, causa de cada erro, caixa atual e minutos');
+      igual(N.nomeArquivoSimulado(sim, 'B'), '2026-10-05_Jucurutu-RN_LabB_simulado.md', 'nome do arquivo AAAA-MM-DD_[concurso]_[laboratório]_simulado.md');
+    });
+
+    /* ---------- saída ---------- */
+    var obrigatorios = resultados.filter(function (r) { return r.num !== 'extra'; });
+    var passaram = obrigatorios.filter(function (r) { return r.ok; }).length;
+    var extrasOk = resultados.filter(function (r) { return r.num === 'extra' && r.ok; }).length;
+    var extras = resultados.length - obrigatorios.length;
+    var todos = resultados.every(function (r) { return r.ok; });
+    var p = document.getElementById('placar-testes');
+    p.className = 'alerta ' + (todos ? 'verde' : 'vermelho');
+    p.textContent = (todos ? 'Todos os testes passaram. ' : 'Há testes falhando. ') + 'Obrigatórios: ' + passaram + '/' + obrigatorios.length + ' · extras: ' + extrasOk + '/' + extras;
+    var h = '';
+    resultados.forEach(function (r) {
+      h += '<div class="teste ' + (r.ok ? 'passou' : 'falhou') + '"><strong>' + (r.ok ? '✔' : '✘') + ' ' + (r.num === 'extra' ? 'Extra' : 'Teste ' + r.num) + ' — ' + r.nome.replace(/</g, '&lt;') + '</strong><ul>';
+      r.checks.forEach(function (c) { h += '<li class="' + (c.ok ? 'sim' : 'nao') + '">' + (c.ok ? '✔ ' : '✘ ') + c.desc.replace(/</g, '&lt;') + '</li>'; });
+      h += '</ul></div>';
+    });
+    document.getElementById('resultados').innerHTML = h;
+    window.RESULTADO_TESTES = { todos: todos, obrigatorios: obrigatorios.length, passaram: passaram, extras: extras, extrasOk: extrasOk,
+      falhas: resultados.filter(function (r) { return !r.ok; }).map(function (r) { return { num: r.num, nome: r.nome, checks: r.checks.filter(function (c) { return !c.ok; }) }; }) };
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corretor de Simulados A×B</title>
+  <meta name="description" content="Calcula e registra simulados dos Métodos A e B. A fonte oficial é o Google Drive.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111827'/%3E%3Ctext x='32' y='42' font-family='Arial' font-size='26' font-weight='bold' fill='white' text-anchor='middle'%3EA%C3%97B%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/estilo.css">
+</head>
+<body>
+  <header class="topo">
+    <a href="#/" class="marca">Corretor de Simulados A×B</a>
+    <span class="sub">calcula e registra · a fonte oficial é o Google Drive</span>
+  </header>
+  <nav class="principal" aria-label="Principal">
+    <a href="#/" data-area="">Início</a>
+    <a href="#/A" data-area="A" class="nav-a">Laboratório A</a>
+    <a href="#/B" data-area="B" class="nav-b">Laboratório B</a>
+    <a href="#/placar" data-area="placar" class="nav-p">Placar A×B</a>
+    <a href="#/backup" data-area="backup">Backup</a>
+  </nav>
+  <main id="app">
+    <noscript>Este site precisa de JavaScript ligado.</noscript>
+  </main>
+  <script src="js/nucleo.js"></script>
+  <script src="js/dados.js"></script>
+  <script src="js/app.js"></script>
+  <script>App.iniciar();</script>
+</body>
+</html>
