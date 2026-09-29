@@ -774,11 +774,18 @@
     h += '<h2>Os cinco números</h2>';
     h += tabela(['Métrica', 'Método A', 'Método B'], [
       ['<strong>Ponto por hora</strong> (principal)', esc(N.textoPph(nA.pph.pontos, nA.pph.minutos, nA.pph.valor)), esc(N.textoPph(nB.pph.pontos, nB.pph.minutos, nB.pph.valor))],
-      ['Retenção aos 21 dias', N.fmtPct(nA.retencao.acertos, nA.retencao.total), N.fmtPct(nB.retencao.acertos, nB.retencao.total)],
+      ['Retenção aos 21 dias<br><span class="suave">acerto com CH conta como erro</span>', esc(N.textoRetencao(nA.retencao)), esc(N.textoRetencao(nB.retencao))],
       ['Migração da causa do erro<br><span class="suave">leitura + distrator em proporção a "não sabia"</span>', esc(N.textoMigracao(nA.migracao)), esc(N.textoMigracao(nB.migracao))],
       ['Discriminação entre vizinhos', N.fmtPct(nA.vizinhos.acertos, nA.vizinhos.total), N.fmtPct(nB.vizinhos.acertos, nB.vizinhos.total)],
       ['Custo de operação', nA.custo.total + ' min ÷ ' + nA.custo.nSemanas + ' sem. = ' + N.fmtNum(nA.custo.media, 1) + ' min/semana', nB.custo.total + ' min ÷ ' + nB.custo.nSemanas + ' sem. = ' + N.fmtNum(nB.custo.media, 1) + ' min/semana']
     ], 'cinco');
+
+    var lado = N.pphLadoALado(nA.pph, nB.pph);
+    h += '<h2 id="titulo-pph-assunto">Ponto por hora por assunto — A e B lado a lado</h2>';
+    h += '<p class="suave">Pontos ganhos no simulado naquele assunto ÷ horas de estudo registradas naquele assunto no mesmo período. Assuntos casados pelo nome. A última linha é a soma dos assuntos medidos, usada no veredito.</p>';
+    h += '<div id="pph-por-assunto">' + (lado.length ? tabela(['Assunto', 'Método A', 'Método B'], lado.map(function (r) {
+      return [esc(r.assunto), esc(N.textoPphLinha(r.a)), esc(N.textoPphLinha(r.b))];
+    }).concat([['<strong>Total dos assuntos medidos (veredito)</strong>', '<strong>' + esc(N.textoPph(nA.pph.pontos, nA.pph.minutos, nA.pph.valor)) + '</strong>', '<strong>' + esc(N.textoPph(nB.pph.pontos, nB.pph.minutos, nB.pph.valor)) + '</strong>']]), 'lado-a-lado') : '<p>Nada registrado no período.</p>') + '</div>';
 
     h += '<div class="acoes"><button type="button" class="primario" data-acao="baixar-placar">Placar A×B (.md)</button></div>';
 
@@ -789,7 +796,7 @@
         return [esc(l.assunto), N.fmtNum(l.pontos), l.minutos, l.valor == null ? '<span class="suave">sem medição (' + esc(l.motivo) + ')</span>' : N.fmtNum(l.pontos) + ' ÷ ' + N.fmtNum(l.minutos / 60) + ' h = <strong>' + N.fmtNum(l.valor) + ' pts/h</strong>'];
       })) : '<p>Nada registrado no período.</p>');
       h += '<h3>Retenção aos 21 dias</h3>' + (n.retencao.linhas.length ? tabela(['Assunto', 'Primeiro contato', 'Acertos em questão nova (21+ dias)'], n.retencao.linhas.map(function (l) {
-        return [esc(l.assunto), N.fmtData(l.primeiro), N.fmtPct(l.acertos, l.total)];
+        return [esc(l.assunto), N.fmtData(l.primeiro), esc(N.textoRetencao(l))];
       })) : '<p>Nenhuma questão nova feita 21 dias ou mais depois do primeiro contato com o assunto.</p>');
       h += '<h3>Migração da causa do erro, por semana</h3>' + (n.migracao.semanas.length ? tabela(['Semana'].concat(N.CAUSAS.map(function (c) { return esc(c.nome); })).concat(['leitura + distrator / (leitura + distrator + não sabia)']), n.migracao.semanas.map(function (s) {
         return ['sem. ' + s.semana + '<br><span class="suave">' + N.fmtData(s.ini) + '–' + N.fmtData(s.fim) + '</span>'].concat(N.CAUSAS.map(function (c) { return N.fmtPct(s.cont[c.id], s.total); })).concat([N.fmtPct(s.leituraDistrator, s.base)]);

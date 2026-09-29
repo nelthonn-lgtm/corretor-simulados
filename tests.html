@@ -308,6 +308,100 @@
       igual(JSON.stringify(segundo), JSON.stringify(primeiro), 'exportar de novo gera o mesmo arquivo (fora a data de exportação)');
     });
 
+    /* ---------- auxiliar do placar (testes 11 e 12) ---------- */
+    /**
+     * Um laboratório com um assunto "X": simulado de 01/10 (primeiro contato, 4 acertos),
+     * simulado de 25/10 (24 dias depois) com as respostas dadas, e uma sessão com os minutos dados.
+     * Cada resposta: [marcou, confiança, eliminação escrita]. Gabarito sempre A; 2 pontos por questão.
+     */
+    function labPlacar(L, minutos, respostas, extraSessao) {
+      var lab = D.labInicial(L);
+      lab.concursos = [{ id: 'c' + L, nome: 'Conc ' + L, lab: L, banca: '', dataProva: '', numAlternativas: 4, minimoPontos: null, zeroElimina: null, meta: null, alvo: L === 'A' ? 'CE' : '',
+        blocos: [{ nome: 'Bloco', numQuestoes: 4, pontosPorQuestao: 2, assuntos: ['X'] }] }];
+      var R = N.regrasDoConcurso(lab.concursos[0]);
+      function q(n, r) { return { n: n, bloco: 0, gabarito: 'A', anulada: false, justificativa: '', marcada: r[0], assunto: 'X', confianca: r[1], eliminacao: r[2], par: '', causa: r[0] === 'A' ? '' : 'nao_sabia' }; }
+      lab.simulados = [
+        { id: 's1' + L, concursoId: 'c' + L, data: '2026-10-01', minutos: 30, regras: R, criadoEm: '2026-10-01T10:00:00Z', questoes: [1, 2, 3, 4].map(function (n) { return q(n, ['A', 'C', true]); }) },
+        { id: 's2' + L, concursoId: 'c' + L, data: '2026-10-25', minutos: 30, regras: R, criadoEm: '2026-10-25T10:00:00Z', questoes: respostas.map(function (r, i) { return q(i + 1, r); }) }
+      ];
+      var itens = [{ assunto: 'X', bloco: 'Bloco', minutos: minutos, questoes: 0, acertos: 0, erros: [] }];
+      if (extraSessao) itens.push(extraSessao);
+      lab.sessoes = [{ id: 'ses' + L, data: '2026-10-02', concursoId: 'c' + L, concursoNome: 'Conc ' + L, alvo: '', itens: itens, criadoEm: '2026-10-02T10:00:00Z' }];
+      return lab;
+    }
+    // A: 1 acerto firme + 2 acertos com CH + 1 erro. B: 1 acerto firme + 1 acerto D sem eliminação (RISCO) + 2 erros.
+    var RESP_A = [['A', 'C', true], ['A', 'CH', true], ['A', 'CH', true], ['B', 'C', true]];
+    var RESP_B = [['A', 'C', true], ['A', 'D', false], ['B', 'C', true], ['C', 'D', true]];
+
+    /* ---------- 11 ---------- */
+    teste(11, 'Retenção aos 21 dias: acerto com CH conta como erro; acerto RISCO sem CH conta e aparece como "x/y, dos quais z RISCO"; o veredito usa o número corrigido', function (ok, igual) {
+      D.usarBackend(D.backendMemoria());
+      var A = labPlacar('A', 60, RESP_A), B = labPlacar('B', 120, RESP_B);
+      var per = N.periodoPlacar({ primeiraSessaoB: '2026-10-01' }, A, B, '2026-11-30');
+      var rA = N.retencao21(A, per), rB = N.retencao21(B, per);
+      igual(rA.acertos + '/' + rA.total, '1/4', 'A: os 2 acertos com CH saem do numerador e ficam no denominador');
+      igual(N.textoRetencao(rA), '1/4, dos quais 0 RISCO', 'A no formato pedido');
+      igual(N.textoRetencao(rB), '2/4, dos quais 1 RISCO', 'B: acerto D sem eliminação escrita conta e aparece como RISCO');
+      igual(N.textoRetencao(rB.linhas[0]), '2/4, dos quais 1 RISCO', 'o mesmo formato na linha por assunto');
+      // Revisão de caixa (B) acertada com CH também conta como erro
+      var B2 = D.labInicial('B');
+      B2.sessoes = [{ id: 'sy', data: '2026-10-01', concursoId: 'jucurutu-rn', concursoNome: 'Jucurutu/RN', itens: [{ assunto: 'Y', bloco: '', minutos: 30, questoes: 2, acertos: 2, erros: [] }], criadoEm: 'a' }];
+      B2.revisoes = [
+        { id: 'r1', linha: 'Y', data: '2026-10-25', resultado: 'acertou', confianca: 'CH', causa: '', questaoNova: true, criadoEm: 'b' },
+        { id: 'r2', linha: 'Y', data: '2026-10-26', resultado: 'acertou', confianca: 'C', causa: '', questaoNova: true, criadoEm: 'c' }];
+      igual(N.textoRetencao(N.retencao21(B2, per)), '1/2, dos quais 0 RISCO', 'revisão de caixa acertada com CH conta como erro');
+      // Veredito
+      var nA = N.numerosMetodo(A, per), nB = N.numerosMetodo(B, per);
+      igual(nA.pph.valor + ' > ' + nB.pph.valor, '14 > 6', 'A ganha em ponto por hora (CH ainda vale ponto na nota)');
+      var v = N.veredito(nA, nB);
+      ok(v.tipo === 'curto_prazo' && v.metodo === 'A' && v.retencao === 'B', 'com a retenção corrigida (1/4 contra 2/4): "' + v.texto + '"');
+      var semCorrecao = N.veredito({ pph: nA.pph, retencao: { acertos: 3, total: 4 }, custo: nA.custo }, nB);
+      igual(semCorrecao.tipo, 'vitoria', 'controle: se CH contasse (3/4), A teria "vitória" — a correção muda o veredito');
+      // Tela e arquivo do placar (janela 2 aberta em 30/11/2026)
+      D.salvarLab(A); D.salvarLab(B); D.salvarGeral({ versao: 1, primeiraSessaoB: '2026-10-01' });
+      N.fixarHoje('2026-11-30');
+      var html = App.htmlDaTela('#/placar');
+      ok(html.indexOf('1/4, dos quais 0 RISCO') >= 0 && html.indexOf('2/4, dos quais 1 RISCO') >= 0, 'a tela do placar mostra a retenção corrigida dos dois lados');
+      ok(html.indexOf('Método A: ganho de curto prazo, não é vitória') >= 0, 'a tela do placar mostra o veredito com o número corrigido');
+      var md = N.mdPlacar(A, B, D.geral(), '2026-11-30');
+      ok(md.indexOf('Retenção aos 21 dias (acerto com CH conta como erro): 1/4, dos quais 0 RISCO') >= 0 && md.indexOf('**Método A: ganho de curto prazo, não é vitória**') >= 0, 'o Placar A×B (.md) usa os mesmos números');
+      N.fixarHoje(null);
+    });
+
+    /* ---------- 12 ---------- */
+    teste(12, 'Placar mostra o ponto por hora POR ASSUNTO, A e B lado a lado, com numerador e denominador em cada linha', function (ok, igual) {
+      D.usarBackend(D.backendMemoria());
+      var A = labPlacar('A', 60, RESP_A);
+      var B = labPlacar('B', 120, RESP_B, { assunto: 'Só B', bloco: '', minutos: 30, questoes: 0, acertos: 0, erros: [] });
+      var per = N.periodoPlacar({ primeiraSessaoB: '2026-10-01' }, A, B, '2026-11-30');
+      var nA = N.numerosMetodo(A, per), nB = N.numerosMetodo(B, per);
+      var lado = N.pphLadoALado(nA.pph, nB.pph);
+      igual(lado.map(function (r) { return r.assunto; }).join(' | '), 'Só B | X', 'uma linha por assunto, juntando A e B');
+      igual(N.textoPphLinha(lado[1].a), '14 pts ÷ 1 h (60 min) = 14 pts/h', 'X no A: numerador e denominador');
+      igual(N.textoPphLinha(lado[1].b), '12 pts ÷ 2 h (120 min) = 6 pts/h', 'X no B: numerador e denominador');
+      igual(N.textoPphLinha(lado[0].a), 'sem medição (nada registrado neste método: 0 pts ÷ 0 min)', 'assunto ausente no A: "sem medição", nunca zero');
+      igual(N.textoPphLinha(lado[0].b), 'sem medição (sem questões deste assunto em simulado: 0 pts ÷ 30 min)', 'assunto do B sem questão em simulado: "sem medição" com os números');
+      igual(nB.pph.valor, 6, 'o número agregado do B (usado no veredito) continua sendo só dos assuntos medidos');
+      // Na tela: tabela visível (fora dos "Detalhes"), lado a lado
+      D.salvarLab(A); D.salvarLab(B); D.salvarGeral({ versao: 1, primeiraSessaoB: '2026-10-01' });
+      N.fixarHoje('2026-11-30');
+      var div = document.createElement('div');
+      div.innerHTML = App.htmlDaTela('#/placar');
+      var caixa = div.querySelector('#pph-por-assunto');
+      ok(!!caixa, 'a tela do placar tem a tabela por assunto');
+      ok(caixa && !caixa.closest('details'), 'a tabela fica à vista, fora das seções recolhidas');
+      var cab = caixa ? [].map.call(caixa.querySelectorAll('th'), function (th) { return th.textContent; }).join(' | ') : '';
+      igual(cab, 'Assunto | Método A | Método B', 'colunas lado a lado');
+      var linhas = caixa ? [].map.call(caixa.querySelectorAll('tbody tr'), function (tr) { return [].map.call(tr.children, function (td) { return td.textContent; }); }) : [];
+      igual(linhas.length, 3, 'duas linhas de assunto e a linha do total');
+      ok(linhas.length === 3 && linhas.every(function (l) { return l[1].indexOf('÷') >= 0 && l[2].indexOf('÷') >= 0; }), 'toda célula de A e de B mostra numerador ÷ denominador');
+      igual(linhas[1] ? linhas[1].join(' | ') : '', 'X | 14 pts ÷ 1 h (60 min) = 14 pts/h | 12 pts ÷ 2 h (120 min) = 6 pts/h', 'linha do assunto X na tela');
+      igual(linhas[2] ? linhas[2].join(' | ') : '', 'Total dos assuntos medidos (veredito) | 14 pts ÷ 1 h (60 min) = 14 pts/h | 12 pts ÷ 2 h (120 min) = 6 pts/h', 'linha do total usado no veredito');
+      var md = N.mdPlacar(A, B, D.geral(), '2026-11-30');
+      ok(md.indexOf('| X | 14 pts ÷ 1 h (60 min) = 14 pts/h | 12 pts ÷ 2 h (120 min) = 6 pts/h |') >= 0, 'a mesma tabela sai no Placar A×B (.md)');
+      N.fixarHoje(null);
+    });
+
     /* ---------- extras ---------- */
     teste('extra', 'Colar gabarito e marcações como sequência de letras', function (ok, igual) {
       var g = N.lerSequencia('ab cde*\nX', 5, 'gabarito');

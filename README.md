@@ -88,8 +88,8 @@ Arquivos para baixar (aba **Drive e exportar** de cada laboratório):
 
 O placar é a **única** tela que lê os dois laboratórios. No topo fica sempre a ressalva: *um candidato só, em concursos, bancas, assuntos e tempos diferentes; é uma impressão medida, com denominador e data.*
 
-- **Ponto por hora (principal), por assunto:** pontos no simulado naquele assunto ÷ horas de estudo registradas naquele assunto no mesmo período. Assunto sem minutos aparece como **sem medição**, nunca como zero.
-- **Retenção aos 21 dias:** acerto em questão nova de um assunto 21 dias ou mais depois do primeiro contato com ele.
+- **Ponto por hora (principal), por assunto:** pontos no simulado naquele assunto ÷ horas de estudo registradas naquele assunto no mesmo período. Assunto sem minutos aparece como **sem medição**, nunca como zero. A tela mostra a tabela por assunto com A e B lado a lado (numerador e denominador em cada linha); a última linha soma os assuntos medidos e é o número usado no veredito.
+- **Retenção aos 21 dias:** acerto em questão nova de um assunto 21 dias ou mais depois do primeiro contato com ele. Acerto com confiança **CH não conta** (entra como erro no denominador). Acerto RISCO sem CH conta e aparece à parte: `x/y, dos quais z RISCO`.
 - **Migração da causa do erro:** as cinco causas por semana; destaca se "leu errado" + "distrator" estão diminuindo em proporção a "não sabia o conteúdo".
 - **Discriminação entre vizinhos:** acerto nas questões marcadas com par vizinho, por semana.
 - **Custo de operação:** minutos por semana operando o sistema.

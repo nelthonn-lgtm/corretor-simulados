@@ -645,18 +645,23 @@
     return fmtNum(pontos) + ' pts ÷ ' + fmtNum(minutos / 60) + ' h (' + minutos + ' min) = ' + fmtNum(valor) + ' pts/h';
   }
 
-  /** Contatos com cada assunto: {assunto, data, total, acertos, nova} */
+  /**
+   * Contatos com cada assunto: {assunto, data, total, acertos, risco, nova}
+   * Para a retenção, acerto com confiança CH não é acerto (conta como erro no denominador).
+   * risco = acertos RISCO sem CH (C ou D sem eliminação escrita); só o simulado registra eliminação escrita.
+   */
   function contatos(lab) {
     var ev = [];
     (lab.simulados || []).forEach(function (sim) {
       sim.questoes.forEach(function (q) {
         var c = classificar(q);
         if (c === 'ANULADA') return;
-        ev.push({ assunto: assuntoDaQuestao(q, sim.regras), data: sim.data, total: 1, acertos: ehAcerto(c) ? 1 : 0, nova: true });
+        var acertou = ehAcerto(c) && q.confianca !== 'CH';
+        ev.push({ assunto: assuntoDaQuestao(q, sim.regras), data: sim.data, total: 1, acertos: acertou ? 1 : 0, risco: acertou && c === 'RISCO' ? 1 : 0, nova: true });
       });
     });
     (lab.sessoes || []).forEach(function (s) {
-      (s.itens || []).forEach(function (it) { ev.push({ assunto: it.assunto, data: s.data, total: it.questoes || 0, acertos: it.acertos || 0, nova: true }); });
+      (s.itens || []).forEach(function (it) { ev.push({ assunto: it.assunto, data: s.data, total: it.questoes || 0, acertos: it.acertos || 0, risco: 0, nova: true }); });
     });
     if (lab.lab === 'A') {
       var itens = {};
@@ -664,30 +669,58 @@
       (lab.revisoes || []).forEach(function (r) {
         var it = itens[r.itemId];
         if (!it) return;
-        ev.push({ assunto: it.assunto, data: r.data, total: 1, acertos: r.resultado === 'acertou' ? 1 : 0, nova: !!r.questaoNova });
+        ev.push({ assunto: it.assunto, data: r.data, total: 1, acertos: r.resultado === 'acertou' ? 1 : 0, risco: 0, nova: !!r.questaoNova });
       });
     } else {
       (lab.revisoes || []).forEach(function (r) {
-        ev.push({ assunto: r.linha, data: r.data, total: 1, acertos: r.resultado === 'acertou' ? 1 : 0, nova: true });
+        ev.push({ assunto: r.linha, data: r.data, total: 1, acertos: r.resultado === 'acertou' && r.confianca !== 'CH' ? 1 : 0, risco: 0, nova: true });
       });
     }
     return ev;
   }
 
-  /** Retenção aos 21 dias: acerto em questão nova de um assunto 21+ dias depois do primeiro contato com ele. */
+  /**
+   * Retenção aos 21 dias: acerto em questão nova de um assunto 21+ dias depois do primeiro contato com ele.
+   * Acerto com CH conta como erro; acerto RISCO sem CH conta como acerto e é contado à parte em "risco".
+   */
   function retencao21(lab, per) {
     var ev = contatos(lab);
     var primeiro = {};
     ev.forEach(function (e) { if (!primeiro[e.assunto] || e.data < primeiro[e.assunto]) primeiro[e.assunto] = e.data; });
-    var porAssunto = {}, chaves = [], ac = 0, tot = 0;
+    var porAssunto = {}, chaves = [], ac = 0, tot = 0, risco = 0;
     ev.forEach(function (e) {
       if (!e.nova || !e.total || !dentro(e.data, per)) return;
       if (diasEntre(primeiro[e.assunto], e.data) < 21) return;
-      if (!porAssunto[e.assunto]) { porAssunto[e.assunto] = { assunto: e.assunto, primeiro: primeiro[e.assunto], acertos: 0, total: 0 }; chaves.push(e.assunto); }
-      porAssunto[e.assunto].acertos += e.acertos; porAssunto[e.assunto].total += e.total;
-      ac += e.acertos; tot += e.total;
+      if (!porAssunto[e.assunto]) { porAssunto[e.assunto] = { assunto: e.assunto, primeiro: primeiro[e.assunto], acertos: 0, total: 0, risco: 0 }; chaves.push(e.assunto); }
+      porAssunto[e.assunto].acertos += e.acertos; porAssunto[e.assunto].total += e.total; porAssunto[e.assunto].risco += e.risco;
+      ac += e.acertos; tot += e.total; risco += e.risco;
     });
-    return { acertos: ac, total: tot, linhas: chaves.sort().map(function (k) { return porAssunto[k]; }) };
+    return { acertos: ac, total: tot, risco: risco, linhas: chaves.sort().map(function (k) { return porAssunto[k]; }) };
+  }
+
+  /** "x/y, dos quais z RISCO" */
+  function textoRetencao(r) {
+    if (!r.total) return fmtPct(r.acertos, r.total);
+    return r.acertos + '/' + r.total + ', dos quais ' + (r.risco || 0) + ' RISCO';
+  }
+
+  /** Uma célula da tabela de ponto por hora: sempre com numerador e denominador. */
+  function textoPphLinha(l) {
+    if (!l) return 'sem medição (nada registrado neste método: 0 pts ÷ 0 min)';
+    if (l.valor != null) return textoPph(l.pontos, l.minutos, l.valor);
+    return 'sem medição (' + l.motivo + ': ' + fmtNum(l.pontos) + ' pts ÷ ' + l.minutos + ' min)';
+  }
+
+  /** Ponto por hora por assunto, A e B na mesma linha (assuntos casados pelo nome). */
+  function pphLadoALado(pA, pB) {
+    var mapa = {}, chaves = [];
+    function add(lado, l) {
+      if (!mapa[l.assunto]) { mapa[l.assunto] = { assunto: l.assunto, a: null, b: null }; chaves.push(l.assunto); }
+      mapa[l.assunto][lado] = l;
+    }
+    pA.linhas.forEach(function (l) { add('a', l); });
+    pB.linhas.forEach(function (l) { add('b', l); });
+    return chaves.sort(function (x, y) { return x.localeCompare(y, 'pt-BR'); }).map(function (k) { return mapa[k]; });
   }
 
   /** Causas de erro com data: simulados, sessões e revisões. */
@@ -916,7 +949,7 @@
   function mdNumerosMetodo(n) {
     var md = '';
     md += '- Ponto por hora (métrica principal): ' + textoPph(n.pph.pontos, n.pph.minutos, n.pph.valor) + '\n';
-    md += '- Retenção aos 21 dias: ' + fmtPct(n.retencao.acertos, n.retencao.total) + '\n';
+    md += '- Retenção aos 21 dias (acerto com CH conta como erro): ' + textoRetencao(n.retencao) + '\n';
     md += '- Migração da causa do erro (leitura + distrator em proporção a "não sabia o conteúdo"): ' + textoMigracao(n.migracao) + '\n';
     md += '- Discriminação entre vizinhos: ' + fmtPct(n.vizinhos.acertos, n.vizinhos.total) + '\n';
     md += '- Custo de operação: ' + n.custo.total + ' min ÷ ' + n.custo.nSemanas + ' semana(s) = ' + fmtNum(n.custo.media, 1) + ' min/semana\n';
@@ -930,7 +963,7 @@
     })) : 'Nada registrado no período.\n';
     md += '\n### Retenção aos 21 dias, por assunto\n\n';
     md += n.retencao.linhas.length ? tabelaMd(['Assunto', 'Primeiro contato', 'Acertos em questão nova (21+ dias)'], n.retencao.linhas.map(function (l) {
-      return [l.assunto, fmtData(l.primeiro), fmtPct(l.acertos, l.total)];
+      return [l.assunto, fmtData(l.primeiro), textoRetencao(l)];
     })) : 'Nenhuma questão nova feita 21 dias ou mais depois do primeiro contato.\n';
     md += '\n### Causas do erro por semana\n\n';
     md += n.migracao.semanas.length ? tabelaMd(['Semana'].concat(CAUSAS.map(function (c) { return c.nome; })).concat(['leitura + distrator em proporção a não sabia']), n.migracao.semanas.map(function (s) {
@@ -973,6 +1006,10 @@
       var v = veredito(nA, nB);
       md += '**' + v.texto + '**\n' + (v.textoCusto ? '\n' + v.textoCusto + '\n' : '');
     }
+    var lado = pphLadoALado(nA.pph, nB.pph);
+    md += '\n## Ponto por hora por assunto — A e B lado a lado\n\n';
+    md += lado.length ? tabelaMd(['Assunto', 'Método A', 'Método B'], lado.map(function (r) { return [r.assunto, textoPphLinha(r.a), textoPphLinha(r.b)]; })
+      .concat([['Total dos assuntos medidos (usado no veredito)', textoPph(nA.pph.pontos, nA.pph.minutos, nA.pph.valor), textoPph(nB.pph.pontos, nB.pph.minutos, nB.pph.valor)]])) : 'Nada registrado no período.\n';
     md += '\n## Método A — cinco números\n\n' + mdNumerosMetodo(nA);
     md += '\n## Método B — cinco números\n\n' + mdNumerosMetodo(nB);
     md += '\n## Detalhes — Método A\n\n' + mdDetalhesMetodo(nA);
@@ -1059,7 +1096,7 @@
     moverCaixa: moverCaixa, estadoCaixasB: estadoCaixasB, vencidasB: vencidasB, proximasB: proximasB,
     atividadeLinhaDia: atividadeLinhaDia, linhasDoDia: linhasDoDia, registroEstadoB: registroEstadoB,
     primeiraSessao: primeiraSessao, periodoPlacar: periodoPlacar, faseJanela: faseJanela, testeDePe: testeDePe,
-    pontoPorHora: pontoPorHora, textoPph: textoPph, retencao21: retencao21, migracaoCausas: migracaoCausas, textoMigracao: textoMigracao,
+    pontoPorHora: pontoPorHora, textoPph: textoPph, textoPphLinha: textoPphLinha, pphLadoALado: pphLadoALado, retencao21: retencao21, textoRetencao: textoRetencao, migracaoCausas: migracaoCausas, textoMigracao: textoMigracao,
     vizinhosPorSemana: vizinhosPorSemana, custoOperacao: custoOperacao, numerosMetodo: numerosMetodo, veredito: veredito,
     textoPeriodo: textoPeriodo, slug: slug, nomeArquivoSimulado: nomeArquivoSimulado, linhasDriveSimulado: linhasDriveSimulado,
     mdSimulado: mdSimulado, mdPlacar: mdPlacar, mdEstadoLab: mdEstadoLab, csvLab: csvLab
