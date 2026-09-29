@@ -16,7 +16,7 @@
   var FRASE_DRIVE = 'A fonte oficial é o seu Google Drive (CADERNO_DE_ERROS no Método A e 11_ESTADO_B no Método B): esta ferramenta só calcula e registra, e toda correção termina em texto pronto para colar lá.';
 
   // Estado passageiro da tela (separado por laboratório)
-  var T = { aviso: null, concEdit: { A: null, B: null }, planoEdital: { A: null, B: null }, filtroA: 'abertos', diaDrive: { A: null, B: null }, pendencias: null };
+  var T = { aviso: null, concEdit: { A: null, B: null }, planoEdital: { A: null, B: null }, mentor: { A: null, B: null }, filtroA: 'abertos', diaDrive: { A: null, B: null }, pendencias: null };
 
   /* ---------------------------------------------------------------
    * Utilidades
@@ -234,6 +234,7 @@
     if (faltam.length) h += alerta('amarelo', '<ul>' + faltam.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>');
     h += '<p class="suave">' + N.totalQuestoes(R.blocos) + ' questões · ' + R.numAlternativas + ' alternativas (' + N.letrasDe(R.numAlternativas).join(', ') + ') · ' + N.fmtNum(N.totalPontos(R.blocos)) + ' pontos possíveis</p></div>';
 
+    h += htmlMentor(L, r);
     h += '<div class="cartao"><h3>2. Gabarito oficial e suas marcações</h3>';
     h += '<p class="suave">Cole as letras em sequência (ex.: ABCDE...). No gabarito, use <strong>*</strong> para questão anulada. Nas marcações, use <strong>-</strong> (hífen) para questão em branco. Espaços e quebras de linha são ignorados. Também dá para preencher questão por questão logo abaixo.</p>';
     h += '<label>Gabarito oficial<textarea rows="2" data-rasc="gabTexto" placeholder="ABCDE...">' + esc(r.gabTexto || '') + '</textarea></label>';
@@ -259,6 +260,28 @@
     h += '<div id="resumo-rasc" class="resumo-fixo">' + htmlResumoRascunho(r, R) + '</div>';
     h += '<div id="lista-pendencias">' + htmlPendencias() + '</div>';
     return h;
+  }
+
+  function htmlMentor(L, r) {
+    var h = '<div class="cartao" id="mentor"><h3>Colar bloco do mentor (opcional)</h3>';
+    h += '<p class="suave">Uma linha por questão, no formato <code>' + esc(N.CABECALHO_MENTOR) + '</code>. ' +
+      'O bloco só preenche o formulário: nada é salvo até você revisar e tocar em "Corrigir e salvar".</p>';
+    h += '<label>Bloco do mentor<textarea rows="6" class="saida" data-rasc="mentorTexto" placeholder="1 | A | A | | C | S | |">' + esc(r.mentorTexto || '') + '</textarea></label>';
+    var m = T.mentor[L];
+    if (!m || m.concursoId !== r.concursoId) return h + '<button type="button" data-acao="mentor-ler">Ler bloco do mentor</button></div>';
+    var lt = m.leitura;
+    if (!lt.ok) {
+      h += alerta('vermelho', '<strong>Bloco recusado — nada foi preenchido.</strong><ul>' + lt.recusas.slice(0, 25).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' +
+        (lt.recusas.length > 25 ? 'e mais ' + (lt.recusas.length - 25) + '.' : '') + 'Corrija o bloco e leia de novo.');
+      return h + '<button type="button" data-acao="mentor-ler">Ler bloco do mentor</button></div>';
+    }
+    var rs = lt.resumo;
+    h += '<div class="alerta info" id="mentor-resumo"><strong>Resumo do bloco:</strong> ' + rs.lidas + ' questões lidas · ' + rs.acertos + ' acertos · ' + rs.erros + ' erros · ' +
+      rs.brancos + ' em branco · ' + rs.anuladas + ' anulada(s).';
+    h += lt.avisos.length ? '<br><strong>' + lt.avisos.length + ' aviso(s):</strong><ul>' + lt.avisos.map(function (a) { return '<li>Q' + a.n + ': ' + esc(a.texto) + '</li>'; }).join('') + '</ul>' : '<br>Nenhum aviso.';
+    h += '</div><p class="suave">Preencher substitui o que já estiver nas ' + rs.lidas + ' questões abaixo.</p>';
+    h += '<div class="acoes"><button type="button" class="primario" data-acao="mentor-preencher">Preencher o formulário</button><button type="button" data-acao="mentor-cancelar">Cancelar</button></div>';
+    return h + '</div>';
   }
 
   var ROTULO_SITUACAO = { ACERTO: 'acerto', RISCO: 'acerto RISCO', ERRO: 'erro', BRANCO: 'em branco', ANULADA: 'anulada', PENDENTE: 'falta gabarito' };
@@ -952,12 +975,7 @@
       T.pendencias = null;
       var sim = {
         id: D.novoId('sim'), concursoId: conc.id, data: r.data, minutos: rr.minutos, regras: R,
-        questoes: r.questoes.map(function (q) {
-          var c = N.classificar(q);
-          return { n: q.n, bloco: q.bloco, gabarito: q.anulada ? '' : q.gabarito, anulada: !!q.anulada, justificativa: q.anulada ? String(q.justificativa).trim() : '',
-            marcada: q.anulada ? '' : q.marcada, assunto: q.anulada ? '' : q.assunto, confianca: q.anulada || !q.marcada ? '' : q.confianca,
-            eliminacao: !q.anulada && !!q.marcada && !!q.eliminacao, par: q.anulada ? '' : q.par, causa: N.ehErro(c) ? q.causa : '' };
-        }),
+        questoes: N.questoesParaSalvar(r.questoes),
         criadoEm: D.agora()
       };
       lab.simulados.push(sim);
@@ -967,10 +985,32 @@
       location.hash = '#/' + L + '/simulado/' + encodeURIComponent(sim.id);
     },
 
+    'mentor-ler': function (el, L) {
+      var lab = D.lab(L), r = lab.rascunho, conc = r && concursoPorId(lab, r.concursoId);
+      if (!conc) return;
+      T.mentor[L] = { concursoId: conc.id, texto: r.mentorTexto || '', leitura: N.lerBlocoMentor(r.mentorTexto || '', N.regrasDoConcurso(conc), lab.pares) };
+      render(true);
+      var alvo = document.getElementById('mentor'); if (alvo) alvo.scrollIntoView({ block: 'start' });
+    },
+
+    'mentor-preencher': function (el, L) {
+      var lab = D.lab(L), r = lab.rascunho, conc = r && concursoPorId(lab, r.concursoId);
+      if (!conc || !T.mentor[L]) return;
+      var leitura = N.lerBlocoMentor(r.mentorTexto || '', N.regrasDoConcurso(conc), lab.pares); // relido na hora, sobre o texto atual
+      if (!leitura.ok || (r.mentorTexto || '') !== T.mentor[L].texto) { T.mentor[L] = { concursoId: conc.id, texto: r.mentorTexto || '', leitura: leitura }; render(true); return; }
+      r.questoes = leitura.questoes;
+      D.salvarLab(lab);
+      T.mentor[L] = null; T.pendencias = null;
+      avisar('ok', 'Formulário preenchido com o bloco do mentor (' + leitura.resumo.lidas + ' questões' + (leitura.avisos.length ? ', ' + leitura.avisos.length + ' aviso(s)' : '') + '). Nada foi salvo: revise e toque em "Corrigir e salvar".');
+      render(true);
+    },
+
+    'mentor-cancelar': function (el, L) { T.mentor[L] = null; render(true); },
+
     'rasc-descartar': function (el, L) {
       if (!confirm('Descartar o rascunho deste simulado? O que foi preenchido será apagado.')) return;
       mutar(L, function (lab) { lab.rascunho = null; });
-      T.pendencias = null;
+      T.pendencias = null; T.mentor[L] = null;
       render(true);
     },
 
@@ -1369,7 +1409,7 @@
       if (rascunhoTemDados(lab.rascunho) && lab.rascunho.concursoId !== id && !confirm('Trocar de concurso apaga o rascunho atual. Continuar?')) { el.value = lab.rascunho.concursoId; return; }
       var c = concursoPorId(lab, id);
       lab.rascunho = c ? novoRascunho(c) : null;
-      D.salvarLab(lab); T.pendencias = null; render(true); return;
+      D.salvarLab(lab); T.pendencias = null; T.mentor[L] = null; render(true); return;
     }
 
     if (el.hasAttribute('data-rasc')) {

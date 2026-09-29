@@ -638,6 +638,140 @@
       ok(lanc.textContent.indexOf('Lançamento bloqueado') < 0 && !!lanc.querySelector('[data-acao="rasc-salvar"]'), 'o lançamento não fica bloqueado');
     });
 
+    /* ---------- auxiliares do bloco do mentor (testes 17 a 22) ---------- */
+    var PED = ['Piaget', 'Vygotsky', 'Libâneo', 'Paulo Freire', 'Ivani Fazenda', 'Saviani', 'Emília Ferreiro', 'Jussara Hoffmann'];
+    /** 50 respostas variadas de Jucurutu: acertos, erros, brancos com causa, uma anulada, CH, sem eliminação, linhas e pares. */
+    function respostasJucurutu() {
+      var rows = [];
+      for (var n = 1; n <= 50; n++) {
+        var r = { n: n, m: 'A', g: 'A', linha: '', conf: 'C', elim: 'S', causa: '', par: '' };
+        if (n % 7 === 3) { r.m = 'B'; r.conf = 'D'; r.causa = 'caiu no distrator'; }
+        if (n % 11 === 5) { r.m = ''; r.conf = ''; r.elim = ''; r.causa = 'não sabia o conteúdo'; }
+        if (n === 20) { r.m = ''; r.g = '*'; r.conf = ''; r.elim = ''; r.causa = 'anulada pela banca no gabarito definitivo'; }
+        if (n % 9 === 0 && r.m === r.g) r.conf = 'CH';
+        if (n % 8 === 1 && r.m === r.g) r.elim = 'N';
+        if (n === 12 || n === 26) { r.m = 'C'; r.conf = 'D'; r.causa = n === 12 ? 'leu errado o enunciado' : 'desatenção'; }
+        if (n >= 36) r.linha = PED[(n - 36) % 8];
+        if (n === 36 || n === 44) r.par = 'Piaget × Vygotsky';
+        if (n === 40) r.par = 'Libâneo × Saviani';
+        if (n === 47) { r.m = 'E'; r.conf = 'CH'; r.causa = 'chute'; }
+        rows.push(r);
+      }
+      return rows;
+    }
+    /** Texto do bloco. variar = grafias diferentes (maiúsculas, sem acento, "x" no par) e linhas em branco. */
+    function textoBloco(rows, variar) {
+      var t = variar ? N.CABECALHO_MENTOR + '\n\n' : '';
+      rows.forEach(function (r, i) {
+        var linha = r.linha, par = r.par, causa = r.causa;
+        if (variar && linha && i % 2 === 0) linha = '  ' + linha.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase() + '  ';
+        if (variar && par) par = i % 2 ? par.replace('×', 'x') : par.toLowerCase().replace('×', 'X');
+        if (variar && causa && i % 3 === 0) causa = causa.charAt(0).toUpperCase() + causa.slice(1);
+        t += [r.n, r.m, r.g, linha, r.conf, r.elim, causa, par].join(' | ') + '\n' + (variar && i % 10 === 9 ? '\n' : '');
+      });
+      return t;
+    }
+    /** O mesmo preenchimento feito à mão no formulário (sem passar pelo bloco). */
+    function preencherManual(questoes, rows) {
+      rows.forEach(function (r, i) {
+        var q = questoes[i];
+        if (r.g === '*') { q.anulada = true; q.gabarito = ''; q.justificativa = r.causa; return; }
+        q.gabarito = r.g; q.marcada = r.m; q.assunto = r.linha; q.par = r.par;
+        if (r.m) { q.confianca = r.conf; q.eliminacao = r.elim === 'S'; }
+        if (r.m !== r.g) N.CAUSAS.forEach(function (c) { if (c.nome === r.causa) q.causa = c.id; });
+      });
+      return questoes;
+    }
+    function simDe(conc, questoes, id) {
+      return { id: id, concursoId: conc.id, data: '2026-10-05', minutos: 180, regras: N.regrasDoConcurso(conc), questoes: N.questoesParaSalvar(questoes), criadoEm: '2026-10-05T10:00:00Z' };
+    }
+
+    /* ---------- 17 ---------- */
+    teste(17, 'Bloco do mentor: bloco completo de Jucurutu (50 linhas) preenche tudo e, salvo, dá a mesma correção do lançamento manual', function (ok, igual) {
+      var lab = D.labInicial('B'), conc = lab.concursos[0], R = N.regrasDoConcurso(conc), rows = respostasJucurutu();
+      var lt = N.lerBlocoMentor(textoBloco(rows, true), R, lab.pares);
+      igual(lt.ok, true, 'bloco aceito (com cabeçalho, linhas em branco, "x" no par e grafias diferentes)');
+      igual(lt.avisos.length, 0, 'nenhum aviso');
+      igual(JSON.stringify(lt.resumo), JSON.stringify({ lidas: 50, acertos: 35, erros: 9, brancos: 5, anuladas: 1 }), 'resumo: 50 lidas, 35 acertos, 9 erros (Q3, 10, 12, 17, 24, 26, 31, 45, 47), 5 em branco (Q5, 16, 27, 38, 49), 1 anulada (Q20)');
+      var viaBloco = App.novoRascunho(conc).questoes;
+      lt.questoes.forEach(function (q, i) { viaBloco[i] = q; });
+      igual(N.pendenciasSimulado({ data: '2026-10-05', minutos: 180, questoes: viaBloco }, R).length, 0, 'preenche tudo: o formulário fica sem pendências');
+      var manual = preencherManual(App.novoRascunho(conc).questoes, rows);
+      var sBloco = simDe(conc, viaBloco, 's'), sManual = simDe(conc, manual, 's');
+      igual(JSON.stringify(sBloco.questoes), JSON.stringify(sManual.questoes), 'questões salvas idênticas às do lançamento manual');
+      igual(JSON.stringify(N.corrigir(sBloco)), JSON.stringify(N.corrigir(sManual)), 'correção idêntica à do lançamento manual');
+      var c = N.corrigir(sBloco);
+      ok(c.total.acertos === 35 && c.total.validas === 49 && c.total.anuladas === 1, 'correção: 35/49 acertos, 1 anulada fora da conta');
+      igual(c.pares.map(function (p) { return p.par + ' ' + p.acertos + '/' + p.total; }).join('; '), 'Piaget × Vygotsky 2/2; Libâneo × Saviani 1/1', 'pares reconhecidos na correção');
+    });
+
+    /* ---------- 18 ---------- */
+    teste(18, 'Bloco do mentor: linha do edital com acento ou maiúscula diferente é reconhecida', function (ok, igual) {
+      var lab = D.labInicial('B'), R = N.regrasDoConcurso(lab.concursos[0]), rows = respostasJucurutu();
+      rows[35].linha = 'PIAGET'; rows[36].linha = 'vygotsky'; rows[37].linha = 'Libaneo'; rows[42].linha = '  emilia   FERREIRO '; rows[43].linha = 'jussara hoffmann';
+      var lt = N.lerBlocoMentor(textoBloco(rows, false), R, lab.pares);
+      igual(lt.ok && lt.avisos.length, 0, 'aceito sem avisos');
+      igual([36, 37, 38, 43, 44].map(function (n) { return lt.questoes[n - 1].assunto; }).join(', '), 'Piaget, Vygotsky, Libâneo, Emília Ferreiro, Jussara Hoffmann', 'linhas reconhecidas com a grafia do cadastro');
+    });
+
+    /* ---------- 19 ---------- */
+    teste(19, 'Bloco do mentor: linha do edital inexistente gera aviso e a questão fica sem linha', function (ok, igual) {
+      var lab = D.labInicial('B'), R = N.regrasDoConcurso(lab.concursos[0]), rows = respostasJucurutu();
+      rows[39].linha = 'Montessori';
+      rows[40].linha = 'Ortografia oficial'; // existe, mas em Língua Portuguesa (depois de carregar os editais); no cadastro inicial não existe
+      rows[43].par = 'Freud × Jung';
+      var lt = N.lerBlocoMentor(textoBloco(rows, false), R, lab.pares);
+      igual(lt.ok, true, 'bloco aceito (linha inexistente é aviso, não recusa)');
+      igual(lt.questoes[39].assunto, '', 'Q40 ficou sem linha');
+      ok(lt.avisos.some(function (a) { return a.n === 40 && a.texto === 'linha do edital "Montessori" não existe no bloco Conhecimentos Pedagógicos: a questão ficou sem linha.'; }), 'aviso com o número da questão (Q40)');
+      ok(lt.avisos.some(function (a) { return a.n === 44 && /par "Freud × Jung" não está no cadastro/.test(a.texto); }) && lt.questoes[43].par === '', 'par inexistente: aviso (Q44) e par vazio');
+      var labE = D.labInicial('B'); D.aplicarPlanoEditais(labE, D.planoEditais(labE));
+      var lt2 = N.lerBlocoMentor(textoBloco(rows, false), N.regrasDoConcurso(labE.concursos[0]), labE.pares);
+      ok(lt2.avisos.some(function (a) { return a.n === 41 && a.texto === 'linha do edital "Ortografia oficial" é do bloco Língua Portuguesa, não de Conhecimentos Pedagógicos: a questão ficou sem linha.'; }), 'linha de outro bloco: aviso diz de qual bloco ela é');
+    });
+
+    /* ---------- 20 ---------- */
+    teste(20, 'Bloco do mentor: bloco com 49 linhas é recusado; bloco com a questão 12 repetida é recusado', function (ok, igual) {
+      var lab = D.labInicial('B'), R = N.regrasDoConcurso(lab.concursos[0]), rows = respostasJucurutu();
+      var lt = N.lerBlocoMentor(textoBloco(rows.slice(0, 49), false), R, lab.pares);
+      igual(lt.ok, false, '49 linhas: recusado');
+      igual(lt.recusas[0], 'O bloco tem 49 questões e o concurso Jucurutu/RN tem 50.', 'explicação: quantidade não bate');
+      ok(lt.recusas.indexOf('Falta a questão 50.') >= 0, 'explicação: qual questão falta');
+      var rep = respostasJucurutu(); rep[12].n = 12;
+      var lt2 = N.lerBlocoMentor(textoBloco(rep, false), R, lab.pares);
+      igual(lt2.ok, false, 'questão 12 repetida: recusado');
+      ok(lt2.recusas.indexOf('A questão 12 aparece 2 vezes.') >= 0 && lt2.recusas.indexOf('Falta a questão 13.') >= 0, 'explicação: repetida e faltando — ' + (lt2.recusas || []).join(' '));
+      ok(!lt.questoes && !lt2.questoes, 'bloco recusado não traz nada para preencher');
+    });
+
+    /* ---------- 21 ---------- */
+    teste(21, 'Bloco do mentor: letra E num concurso de 4 alternativas (SEDUC/CE) é recusada', function (ok, igual) {
+      var lab = D.labInicial('A'); D.aplicarPlanoEditais(lab, D.planoEditais(lab));
+      var sed = lab.concursos[0], R = N.regrasDoConcurso(sed);
+      igual(R.numAlternativas + ' alternativas, ' + N.totalQuestoes(R.blocos) + ' questões', '4 alternativas, 80 questões', 'SEDUC/CE do edital');
+      var t = ''; for (var n = 1; n <= 80; n++) t += n + ' | A | A | | C | S | |\n';
+      igual(N.lerBlocoMentor(t, R, lab.pares).ok, true, 'bloco só com A–D é aceito');
+      var marcadaE = t.replace('\n7 | A | A |', '\n7 | E | A |'), gabE = t.replace('\n9 | A | A |', '\n9 | A | E |');
+      var l1 = N.lerBlocoMentor(marcadaE, R, lab.pares), l2 = N.lerBlocoMentor(gabE, R, lab.pares);
+      ok(!l1.ok && l1.recusas.join(' ') === 'Questão 7: marcada "E" fora das alternativas do concurso (A–D).', 'marcada E: recusado — ' + (l1.recusas || []).join(' '));
+      ok(!l2.ok && l2.recusas.join(' ') === 'Questão 9: gabarito "E" fora das alternativas do concurso (A–D).', 'gabarito E: recusado — ' + (l2.recusas || []).join(' '));
+    });
+
+    /* ---------- 22 ---------- */
+    teste(22, 'Bloco do mentor: questão em branco com causa e questão anulada com justificativa são lidas corretamente', function (ok, igual) {
+      var lab = D.labInicial('B'), R = N.regrasDoConcurso(lab.concursos[0]), rows = respostasJucurutu();
+      var lt = N.lerBlocoMentor(textoBloco(rows, false), R, lab.pares);
+      var b = lt.questoes[4], a = lt.questoes[19];
+      igual([b.marcada, b.gabarito, b.causa, b.confianca, b.eliminacao, N.classificar(b)].join(' | '), ' | A | nao_sabia |  | false | BRANCO', 'Q5 em branco: sem marcação, causa "não sabia o conteúdo"');
+      igual([a.anulada, a.gabarito, a.justificativa, N.classificar(a)].join(' | '), 'true |  | anulada pela banca no gabarito definitivo | ANULADA', 'Q20 anulada: justificativa vinda do campo causa');
+      var c = N.corrigir(simDe(lab.concursos[0], lt.questoes, 's22'));
+      igual(c.anuladas[0].n + ': ' + c.anuladas[0].justificativa, '20: anulada pela banca no gabarito definitivo', 'a correção registra a anulada com a justificativa');
+      igual(c.causas.filter(function (x) { return x.id === 'nao_sabia'; })[0].n, 5, 'as 5 questões em branco entram com a causa na distribuição');
+      rows[4].causa = ''; rows[19].causa = '';
+      var lt3 = N.lerBlocoMentor(textoBloco(rows, false), R, lab.pares);
+      ok(lt3.ok && lt3.avisos.some(function (x) { return x.n === 5 && x.texto === 'questão em branco sem causa.'; }) && lt3.avisos.some(function (x) { return x.n === 20 && /anulada sem justificativa/.test(x.texto); }), 'sem causa / sem justificativa: aviso com o número da questão');
+    });
+
     /* ---------- extras ---------- */
     teste('extra', 'Colar gabarito e marcações como sequência de letras', function (ok, igual) {
       var g = N.lerSequencia('ab cde*\nX', 5, 'gabarito');

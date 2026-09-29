@@ -220,6 +220,120 @@
     return c;
   }
 
+  /** Limpa as questões do rascunho antes de salvar (mesma regra para lançamento manual e bloco do mentor). */
+  function questoesParaSalvar(qs) {
+    return qs.map(function (q) {
+      var c = classificar(q);
+      return { n: q.n, bloco: q.bloco, gabarito: q.anulada ? '' : q.gabarito, anulada: !!q.anulada, justificativa: q.anulada ? String(q.justificativa).trim() : '',
+        marcada: q.anulada ? '' : q.marcada, assunto: q.anulada ? '' : q.assunto, confianca: q.anulada || !q.marcada ? '' : q.confianca,
+        eliminacao: !q.anulada && !!q.marcada && !!q.eliminacao, par: q.anulada ? '' : q.par, causa: ehErro(c) ? q.causa : '' };
+    });
+  }
+
+  /* ---------------------------------------------------------------
+   * Bloco do mentor: uma linha por questão
+   * n | marcada | gabarito | linha do edital | confiança | eliminação | causa | par
+   * ------------------------------------------------------------- */
+
+  var CABECALHO_MENTOR = 'n | marcada | gabarito | linha do edital | confiança | eliminação | causa | par';
+
+  /** Sem diferenciar maiúsculas, acentos e espaços extras. */
+  function normalizarTexto(s) {
+    return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
+  /** Pares: também aceita "×", "x" ou "X" como separador, com ou sem espaços. */
+  function normalizarPar(s) { return normalizarTexto(s).replace(/×/g, 'x').replace(/\s+/g, ''); }
+
+  /**
+   * Lê o bloco. Não mexe em nada: devolve { ok, recusas } ou { ok, questoes, avisos, resumo }.
+   * Recusa o bloco inteiro se o número de questões não bater, se houver número repetido, faltando ou
+   * inválido, ou se alguma letra estiver fora das alternativas do concurso.
+   */
+  function lerBlocoMentor(texto, regras, pares) {
+    var letras = letrasDe(regras.numAlternativas), total = totalQuestoes(regras.blocos), mapa = mapaBlocos(regras.blocos);
+    var faixa = letras.length ? letras[0] + '–' + letras[letras.length - 1] : '—';
+    var recusas = [], avisos = [], lidas = [];
+    var cab = normalizarTexto(CABECALHO_MENTOR).replace(/\s/g, '');
+    String(texto || '').split(/\r?\n/).forEach(function (bruta, i) {
+      if (!bruta.trim()) return;                                               // linha em branco: ignora
+      if (normalizarTexto(bruta).replace(/\s/g, '') === cab) return;           // cabeçalho igual ao formato: ignora
+      var c = bruta.split('|').map(function (x) { return x.trim(); });
+      if (c.length > 8) { recusas.push('Linha ' + (i + 1) + ' tem mais de 8 campos separados por "|": ' + bruta.trim()); return; }
+      while (c.length < 8) c.push('');
+      lidas.push({ linha: i + 1, c: c });
+    });
+    if (lidas.length !== total) recusas.unshift('O bloco tem ' + lidas.length + ' questões e o concurso ' + regras.nome + ' tem ' + total + '.');
+    var cont = {}, porN = {};
+    lidas.forEach(function (l) {
+      if (!/^\d+$/.test(l.c[0])) { recusas.push('Linha ' + l.linha + ': número da questão inválido ("' + l.c[0] + '").'); return; }
+      var n = parseInt(l.c[0], 10);
+      cont[n] = (cont[n] || 0) + 1; porN[n] = l;
+      if (n < 1 || n > total) recusas.push('Questão ' + n + ' não existe neste concurso (1 a ' + total + ').');
+    });
+    Object.keys(cont).forEach(function (n) { if (cont[n] > 1) recusas.push('A questão ' + n + ' aparece ' + cont[n] + ' vezes.'); });
+    var faltam = [];
+    for (var k = 1; k <= total; k++) if (!cont[k]) faltam.push(k);
+    if (faltam.length) recusas.push((faltam.length === 1 ? 'Falta a questão ' : 'Faltam as questões ') + faltam.join(', ') + '.');
+    Object.keys(porN).forEach(function (n) {
+      var c = porN[n].c, m = c[1].toUpperCase(), g = c[2].toUpperCase();
+      if (m && letras.indexOf(m) < 0) recusas.push('Questão ' + n + ': marcada "' + c[1] + '" fora das alternativas do concurso (' + faixa + ').');
+      if (g !== '*' && letras.indexOf(g) < 0) recusas.push('Questão ' + n + ': gabarito "' + c[2] + '" fora das alternativas do concurso (' + faixa + ')' + (g ? '' : ' — está vazio') + '.');
+    });
+    if (recusas.length) return { ok: false, recusas: recusas };
+
+    function aviso(n, t) { avisos.push({ n: n, texto: t }); }
+    var nomesCausa = CAUSAS.map(function (x) { return x.nome; }).join(', ');
+    var questoes = [];
+    for (var n = 1; n <= total; n++) {
+      var c = porN[n].c, b = regras.blocos[mapa[n - 1]];
+      var q = { n: n, bloco: mapa[n - 1], gabarito: '', anulada: false, justificativa: '', marcada: '', assunto: '', confianca: '', eliminacao: false, par: '', causa: '' };
+      questoes.push(q);
+      var g = c[2].toUpperCase(), m = c[1].toUpperCase();
+      if (g === '*') {                                                          // anulada: o campo causa leva a justificativa
+        q.anulada = true; q.justificativa = c[6];
+        if (!c[6]) aviso(n, 'anulada sem justificativa (o campo causa deve trazer a justificativa).');
+        continue;
+      }
+      q.gabarito = g; q.marcada = m;
+      if (c[3]) {                                                               // linha do edital
+        var achou = '', outro = '';
+        (b.assuntos || []).forEach(function (a) { if (normalizarTexto(a) === normalizarTexto(c[3])) achou = a; });
+        if (!achou && normalizarTexto(c[3]) !== normalizarTexto(b.nome)) {
+          regras.blocos.forEach(function (ob) { (ob.assuntos || []).forEach(function (a) { if (ob !== b && normalizarTexto(a) === normalizarTexto(c[3])) outro = ob.nome; }); });
+          aviso(n, 'linha do edital "' + c[3] + '" ' + (outro ? 'é do bloco ' + outro + ', não de ' + b.nome : 'não existe no bloco ' + b.nome) + ': a questão ficou sem linha.');
+        }
+        q.assunto = achou;
+      }
+      if (m) {                                                                  // confiança e eliminação só em questão marcada
+        var conf = c[4].toUpperCase();
+        if (conf === 'C' || conf === 'D' || conf === 'CH') q.confianca = conf;
+        else aviso(n, c[4] ? 'confiança "' + c[4] + '" inválida (use C, D ou CH): ficou sem confiança.' : 'sem confiança (use C, D ou CH).');
+        var el = normalizarTexto(c[5]);
+        if (el === 's' || el === 'sim') q.eliminacao = true;
+        else if (el === 'n' || el === 'nao') q.eliminacao = false;
+        else aviso(n, (c[5] ? 'eliminação "' + c[5] + '" inválida (use S ou N)' : 'eliminação não informada') + ': ficou "não".');
+      }
+      var causa = null;
+      CAUSAS.forEach(function (x) { if (normalizarTexto(x.nome) === normalizarTexto(c[6])) causa = x; });
+      if (m && m === g) {
+        if (c[6]) aviso(n, 'causa "' + c[6] + '" ignorada: a questão está certa.');
+      } else if (causa) q.causa = causa.id;
+      else aviso(n, c[6] ? 'causa "' + c[6] + '" não reconhecida (use: ' + nomesCausa + ').' : (m ? 'erro' : 'questão em branco') + ' sem causa.');
+      if (c[7]) {                                                               // par vizinho
+        var par = '';
+        (pares || []).forEach(function (p) { if (normalizarPar(p) === normalizarPar(c[7])) par = p; });
+        if (!par) aviso(n, 'par "' + c[7] + '" não está no cadastro de pares vizinhos: ficou vazio.');
+        q.par = par;
+      }
+    }
+    var resumo = { lidas: total, acertos: 0, erros: 0, brancos: 0, anuladas: 0 };
+    questoes.forEach(function (q) {
+      var cl = classificar(q);
+      if (ehAcerto(cl)) resumo.acertos++; else if (cl === 'ERRO') resumo.erros++; else if (cl === 'BRANCO') resumo.brancos++; else if (cl === 'ANULADA') resumo.anuladas++;
+    });
+    return { ok: true, questoes: questoes, avisos: avisos, resumo: resumo };
+  }
+
   function questoesEmBranco(blocos) {
     return mapaBlocos(blocos).map(function (bi, i) {
       return { n: i + 1, bloco: bi, gabarito: '', anulada: false, justificativa: '', marcada: '', assunto: '', confianca: '', eliminacao: false, par: '', causa: '' };
@@ -1216,7 +1330,8 @@
     inteiroPositivo: inteiroPositivo, inteiroNaoNegativo: inteiroNaoNegativo,
     letrasDe: letrasDe, totalQuestoes: totalQuestoes, totalPontos: totalPontos, bloqueiosLancamento: bloqueiosLancamento,
     mapaBlocos: mapaBlocos, regrasDoConcurso: regrasDoConcurso, normalizarConcurso: normalizarConcurso, mesmoConcurso: mesmoConcurso,
-    diferencasConcurso: diferencasConcurso, camposNaoPreenchidos: camposNaoPreenchidos, questoesEmBranco: questoesEmBranco, lerSequencia: lerSequencia,
+    diferencasConcurso: diferencasConcurso, camposNaoPreenchidos: camposNaoPreenchidos,
+    questoesParaSalvar: questoesParaSalvar, CABECALHO_MENTOR: CABECALHO_MENTOR, normalizarTexto: normalizarTexto, lerBlocoMentor: lerBlocoMentor, questoesEmBranco: questoesEmBranco, lerSequencia: lerSequencia,
     classificar: classificar, ehAcerto: ehAcerto, ehErro: ehErro, assuntoDaQuestao: assuntoDaQuestao,
     pendenciasSimulado: pendenciasSimulado, corrigir: corrigir, textoMeta: textoMeta, textoSituacao: textoSituacao,
     listarErros: listarErros, montarCiclo: montarCiclo, estadoItemA: estadoItemA, estadoRevisoesA: estadoRevisoesA,

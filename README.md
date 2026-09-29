@@ -54,6 +54,46 @@ A correção mostra: acertos e pontos por bloco e no total, situação diante da
 
 O rascunho fica guardado enquanto você preenche; dá para fechar a página e continuar depois.
 
+### Colar bloco do mentor
+
+Em vez de preencher questão por questão, você pode colar o bloco que o mentor devolve, **uma linha por questão**:
+
+```
+n | marcada | gabarito | linha do edital | confiança | eliminação | causa | par
+```
+
+Exemplo (começo de um bloco de Jucurutu/RN; o bloco de verdade precisa ter as 50 linhas):
+
+```
+n | marcada | gabarito | linha do edital | confiança | eliminação | causa | par
+1 | A | A | | C | S | |
+2 | C | B | | D | S | caiu no distrator |
+3 | | D | | | | não sabia o conteúdo |
+4 | B | * | | | | anulada pela banca no gabarito definitivo |
+...
+36 | A | A | Piaget | CH | S | | Piaget x Vygotsky
+37 | B | C | vygotsky | D | N | leu errado o enunciado | Piaget × Vygotsky
+```
+
+Como cada campo é lido:
+- **marcada** vazia = questão em branco. **gabarito** `*` = anulada; nesse caso o campo **causa** leva a justificativa da anulação.
+- **linha do edital**: igual a uma linha do cadastro do concurso (maiúsculas, acentos e espaços extras não importam). Se não achar, a questão fica sem linha e aparece um aviso.
+- **confiança**: C, D ou CH (vazia só em questão em branco ou anulada). **eliminação**: S ou N.
+- **causa**: obrigatória nos erros e nas questões em branco, com um dos cinco nomes; vazia nos acertos.
+- **par**: vazio ou um par do cadastro do laboratório (`×` ou `x`, tanto faz). Se não achar, fica vazio e aparece um aviso.
+- Linhas em branco e a linha de cabeçalho são ignoradas.
+
+Passo a passo:
+1. Escolha o concurso.
+2. Cole o bloco em **Colar bloco do mentor** e toque em **Ler bloco do mentor**.
+3. Aparece um resumo (questões lidas, acertos, erros, em branco, anuladas) e a lista de avisos com o número de cada questão.
+4. **Preencher o formulário** coloca tudo nas questões, mas **não salva**: revise e toque em **Corrigir e salvar**, como sempre.
+
+O bloco inteiro é **recusado**, com a explicação, e nada é preenchido, se:
+- o número de questões não bater com o concurso;
+- algum número de questão estiver repetido ou faltando;
+- alguma letra estiver fora das alternativas do concurso (por exemplo, E no SEDUC/CE, que tem A–D).
+
 ## Registrar uma sessão de estudo
 
 1. **Sessões de estudo** → data e concurso.
