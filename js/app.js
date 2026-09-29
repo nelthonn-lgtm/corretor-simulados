@@ -656,7 +656,9 @@
       minimoPontos: c && c.minimoPontos != null ? N.fmtNum(c.minimoPontos) : '',
       zeroElimina: c ? (c.zeroElimina === true ? 'sim' : c.zeroElimina === false ? 'nao' : '') : '',
       meta: c && c.meta != null ? N.fmtNum(c.meta) : '', alvo: c ? c.alvo || '' : '',
-      blocos: c ? c.blocos.map(function (b) { return { nome: b.nome, numQuestoes: String(b.numQuestoes), pontosPorQuestao: N.fmtNum(b.pontosPorQuestao), assuntosTexto: (b.assuntos || []).join('\n') }; }) : []
+      blocos: c ? c.blocos.map(function (b) { return { nome: b.nome, numQuestoes: String(b.numQuestoes), pontosPorQuestao: N.fmtNum(b.pontosPorQuestao), assuntosTexto: (b.assuntos || []).join('\n'),
+        minimoAcertos: b.minimoAcertos != null ? String(b.minimoAcertos) : '' }; }) : [],
+      grupos: c && c.grupos ? c.grupos.map(function (g) { return { nome: g.nome, blocos: g.blocos.slice(), minimoAcertos: String(g.minimoAcertos) }; }) : []
     };
   }
 
@@ -678,11 +680,26 @@
       h += '<fieldset class="bloco-edit" data-bloco="' + i + '"><legend>Bloco ' + (i + 1) + '</legend><div class="grade3">';
       h += '<label>Nome<input type="text" data-bloco-campo="nome" value="' + esc(b.nome) + '"></label>';
       h += '<label>Nº de questões<input type="number" min="1" step="1" inputmode="numeric" data-bloco-campo="numQuestoes" value="' + esc(b.numQuestoes) + '"></label>';
-      h += '<label>Pontos por questão<input type="text" inputmode="decimal" data-bloco-campo="pontosPorQuestao" value="' + esc(b.pontosPorQuestao) + '"></label></div>';
+      h += '<label>Pontos por questão<input type="text" inputmode="decimal" data-bloco-campo="pontosPorQuestao" value="' + esc(b.pontosPorQuestao) + '"></label>';
+      h += '<label>Mínimo de acertos no bloco (opcional)<input type="number" min="0" step="1" inputmode="numeric" data-bloco-campo="minimoAcertos" value="' + esc(b.minimoAcertos || '') + '" placeholder="sem mínimo"></label></div>';
       h += '<label>Assuntos/linhas do edital (um por linha)<textarea rows="4" data-bloco-campo="assuntosTexto">' + esc(b.assuntosTexto) + '</textarea></label>';
       h += '<button type="button" class="perigo pequeno" data-acao="conc-remover-bloco" data-i="' + i + '">Remover bloco</button></fieldset>';
     });
-    h += '<div class="acoes"><button type="button" data-acao="conc-add-bloco">+ Bloco</button>';
+    h += '<div class="acoes"><button type="button" data-acao="conc-add-bloco">+ Bloco</button></div>';
+    h += '<h4>Grupos de blocos com mínimo próprio (opcional)</h4>';
+    h += '<p class="suave">Ex.: uma "Parte 1" formada por vários blocos, com mínimo de acertos somado. Abaixo do mínimo, elimina.</p>';
+    (e.grupos || []).forEach(function (g, gi) {
+      h += '<fieldset class="bloco-edit" data-grupo="' + gi + '"><legend>Grupo ' + (gi + 1) + '</legend><div class="grade2">';
+      h += '<label>Nome do grupo<input type="text" data-grupo-campo="nome" value="' + esc(g.nome) + '"></label>';
+      h += '<label>Mínimo de acertos do grupo<input type="number" min="0" step="1" inputmode="numeric" data-grupo-campo="minimoAcertos" value="' + esc(g.minimoAcertos) + '"></label></div>';
+      h += '<p><strong>Blocos do grupo</strong></p>';
+      e.blocos.forEach(function (b, bi) {
+        h += '<label class="marcar"><input type="checkbox" data-grupo-bloco="' + bi + '"' + (g.blocos.indexOf(bi) >= 0 ? ' checked' : '') + '> Bloco ' + (bi + 1) + (b.nome ? ' — ' + esc(b.nome) : '') + '</label>';
+      });
+      if (!e.blocos.length) h += '<p class="suave">Cadastre os blocos primeiro.</p>';
+      h += '<button type="button" class="perigo pequeno" data-acao="conc-remover-grupo" data-i="' + gi + '">Remover grupo</button></fieldset>';
+    });
+    h += '<div class="acoes"><button type="button" data-acao="conc-add-grupo">+ Grupo de blocos</button>';
     h += '<button type="button" class="primario" data-acao="conc-salvar">Salvar concurso</button>';
     h += '<button type="button" data-acao="conc-cancelar">Cancelar</button>';
     if (e.id) h += '<button type="button" class="perigo" data-acao="conc-excluir">Excluir concurso</button>';
@@ -702,9 +719,12 @@
         ' · meta: ' + (c.meta != null ? N.fmtNum(c.meta) : 'não cadastrada') + (L === 'A' ? ' · alvo: ' + esc(c.alvo || '—') : '') + '</span>';
       if (bl.length) h += alerta('amarelo', '<strong>' + esc(N.AVISO_SEM_BLOCOS) + '.</strong> ' + esc(bl.join(' · ')));
       if (c.blocos.length) {
-        h += tabela(['Bloco', 'Questões', 'Pontos/questão', 'Subtotal', 'Linhas do edital'], c.blocos.map(function (b) {
-          return [esc(b.nome), b.numQuestoes, N.fmtNum(b.pontosPorQuestao), N.fmtNum(b.numQuestoes * b.pontosPorQuestao), b.assuntos.length ? esc(b.assuntos.join(', ')) : '<span class="suave">a preencher</span>'];
-        }).concat([['<strong>Total</strong>', N.totalQuestoes(c.blocos), '', '<strong>' + N.fmtNum(N.totalPontos(c.blocos)) + '</strong>', '']]));
+        h += tabela(['Bloco', 'Questões', 'Pontos/questão', 'Subtotal', 'Mínimo de acertos', 'Linhas do edital'], c.blocos.map(function (b) {
+          return [esc(b.nome), b.numQuestoes, N.fmtNum(b.pontosPorQuestao), N.fmtNum(b.numQuestoes * b.pontosPorQuestao), b.minimoAcertos != null ? b.minimoAcertos : '—', b.assuntos.length ? esc(b.assuntos.join(', ')) : '<span class="suave">a preencher</span>'];
+        }).concat([['<strong>Total</strong>', N.totalQuestoes(c.blocos), '', '<strong>' + N.fmtNum(N.totalPontos(c.blocos)) + '</strong>', '', '']]));
+        if (c.grupos && c.grupos.length) h += '<p>Grupos com mínimo próprio: ' + c.grupos.map(function (g) {
+          return '<strong>' + esc(g.nome) + '</strong> (' + g.blocos.map(function (i) { return c.blocos[i] ? esc(c.blocos[i].nome) : '?'; }).join(', ') + ') mínimo ' + g.minimoAcertos + ' acertos';
+        }).join('; ') + '</p>';
       }
       h += '<button type="button" data-acao="conc-editar" data-id="' + esc(c.id) + '">Editar</button></div>';
     });
@@ -1045,11 +1065,26 @@
     },
     'conc-cancelar': function (el, L) { T.concEdit[L] = null; render(true); },
     'conc-add-bloco': function (el, L) {
-      T.concEdit[L].blocos.push({ nome: '', numQuestoes: '', pontosPorQuestao: '', assuntosTexto: '' });
+      T.concEdit[L].blocos.push({ nome: '', numQuestoes: '', pontosPorQuestao: '', assuntosTexto: '', minimoAcertos: '' });
       render(true);
     },
     'conc-remover-bloco': function (el, L) {
-      T.concEdit[L].blocos.splice(+el.getAttribute('data-i'), 1);
+      var i = +el.getAttribute('data-i'), e = T.concEdit[L];
+      e.blocos.splice(i, 1);
+      // os grupos guardam o número do bloco: tira o removido e renumera os seguintes
+      (e.grupos || []).forEach(function (g) {
+        g.blocos = g.blocos.filter(function (x) { return x !== i; }).map(function (x) { return x > i ? x - 1 : x; });
+      });
+      render(true);
+    },
+    'conc-add-grupo': function (el, L) {
+      var e = T.concEdit[L];
+      e.grupos = e.grupos || [];
+      e.grupos.push({ nome: '', blocos: [], minimoAcertos: '' });
+      render(true);
+    },
+    'conc-remover-grupo': function (el, L) {
+      T.concEdit[L].grupos.splice(+el.getAttribute('data-i'), 1);
       render(true);
     },
     'conc-excluir': function (el, L) {
@@ -1077,15 +1112,26 @@
         if (!b.nome.trim()) erros.push('Bloco ' + (i + 1) + ': informe o nome.');
         if (!N.inteiroPositivo(nq)) erros.push('Bloco ' + (i + 1) + ': número de questões inválido.');
         if (!(pp > 0)) erros.push('Bloco ' + (i + 1) + ': pontos por questão inválidos.');
+        var mb = N.lerNumero(b.minimoAcertos);
+        if (mb != null && !(N.inteiroNaoNegativo(mb) && (!N.inteiroPositivo(nq) || mb <= nq))) erros.push('Bloco ' + (i + 1) + ': mínimo de acertos deve ser um inteiro entre 0 e o número de questões.');
         var vistos = {};
         return { nome: b.nome.trim(), numQuestoes: nq, pontosPorQuestao: pp,
-          assuntos: String(b.assuntosTexto || '').split('\n').map(function (s) { return s.trim(); }).filter(function (s) { if (!s || vistos[s]) return false; vistos[s] = true; return true; }) };
+          assuntos: String(b.assuntosTexto || '').split('\n').map(function (s) { return s.trim(); }).filter(function (s) { if (!s || vistos[s]) return false; vistos[s] = true; return true; }),
+          minimoAcertos: mb };
+      });
+      var grupos = (e.grupos || []).map(function (g, gi) {
+        var r = 'Grupo ' + (gi + 1) + ': ', mg = N.lerNumero(g.minimoAcertos), soma = 0;
+        g.blocos.forEach(function (i) { soma += blocos[i] && N.inteiroPositivo(blocos[i].numQuestoes) ? blocos[i].numQuestoes : 0; });
+        if (!String(g.nome).trim()) erros.push(r + 'informe o nome.');
+        if (!g.blocos.length) erros.push(r + 'escolha os blocos que o compõem.');
+        if (!(N.inteiroNaoNegativo(mg) && mg <= soma)) erros.push(r + 'mínimo de acertos deve ser um inteiro entre 0 e o total de questões dos blocos escolhidos.');
+        return { nome: String(g.nome).trim(), blocos: g.blocos.slice().sort(function (a, b) { return a - b; }), minimoAcertos: mg };
       });
       if (erros.length) { avisar('erro', 'Concurso não salvo: ' + erros.join(' ')); render(true); return; }
       mutar(L, function (lab) {
         var obj = { id: e.id || D.novoId('conc'), nome: e.nome.trim(), lab: L, banca: e.banca.trim(), dataProva: e.dataProva || '',
           numAlternativas: alt, minimoPontos: min, zeroElimina: e.zeroElimina === 'sim' ? true : e.zeroElimina === 'nao' ? false : null,
-          meta: meta, alvo: L === 'A' ? (e.alvo.trim() || e.nome.trim().toUpperCase()) : '', blocos: blocos };
+          meta: meta, alvo: L === 'A' ? (e.alvo.trim() || e.nome.trim().toUpperCase()) : '', blocos: blocos, grupos: grupos };
         var achou = false;
         lab.concursos = lab.concursos.map(function (c) { if (c.id === obj.id) { achou = true; return obj; } return c; });
         if (!achou) lab.concursos.push(obj);
@@ -1324,6 +1370,18 @@
     if (el.hasAttribute('data-bloco-campo')) {
       var bi = +el.closest('[data-bloco]').getAttribute('data-bloco');
       T.concEdit[L].blocos[bi][el.getAttribute('data-bloco-campo')] = el.value; return;
+    }
+
+    if (el.hasAttribute('data-grupo-campo')) {
+      var gi = +el.closest('[data-grupo]').getAttribute('data-grupo');
+      T.concEdit[L].grupos[gi][el.getAttribute('data-grupo-campo')] = el.value; return;
+    }
+
+    if (el.hasAttribute('data-grupo-bloco')) {
+      var g = T.concEdit[L].grupos[+el.closest('[data-grupo]').getAttribute('data-grupo')], b = +el.getAttribute('data-grupo-bloco');
+      g.blocos = g.blocos.filter(function (x) { return x !== b; });
+      if (el.checked) g.blocos.push(b);
+      return;
     }
 
     if (tipoEvento !== 'change') return;

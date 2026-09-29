@@ -504,6 +504,62 @@
       N.fixarHoje(null);
     });
 
+    /* ---------- 15 ---------- */
+    teste(15, 'Mínimo por bloco e grupos de blocos: eliminação com todos os motivos juntos; simulado guarda as regras do dia', function (ok, igual) {
+      D.usarBackend(D.backendMemoria());
+      // Concurso do pedido: EB 8, AP 8, LP 8, IND 6 (grupo P1, mínimo 12) e ESP 50 (grupo P2, mínimo 20);
+      // mínimos por bloco 3/3/3/2; total mínimo 40; 1 ponto por questão.
+      var conc = { id: 'c-p1p2', nome: 'Concurso P1/P2', lab: 'A', banca: 'X', dataProva: '', numAlternativas: 5, minimoPontos: 40, zeroElimina: true, meta: null, alvo: 'CE',
+        blocos: [
+          { nome: 'EB', numQuestoes: 8, pontosPorQuestao: 1, assuntos: [], minimoAcertos: 3 },
+          { nome: 'Administração Pública', numQuestoes: 8, pontosPorQuestao: 1, assuntos: [], minimoAcertos: 3 },
+          { nome: 'LP', numQuestoes: 8, pontosPorQuestao: 1, assuntos: [], minimoAcertos: 3 },
+          { nome: 'IND', numQuestoes: 6, pontosPorQuestao: 1, assuntos: [], minimoAcertos: 2 },
+          { nome: 'ESP', numQuestoes: 50, pontosPorQuestao: 1, assuntos: [], minimoAcertos: null }],
+        grupos: [{ nome: 'P1', blocos: [0, 1, 2, 3], minimoAcertos: 12 }, { nome: 'P2', blocos: [4], minimoAcertos: 20 }] };
+      function sim(acertos, id) {
+        var qs = N.questoesEmBranco(conc.blocos), cont = [0, 0, 0, 0, 0];
+        qs.forEach(function (q) {
+          q.gabarito = 'A';
+          if (cont[q.bloco] < acertos[q.bloco]) { q.marcada = 'A'; q.confianca = 'C'; q.eliminacao = true; cont[q.bloco]++; }
+          else { q.marcada = 'B'; q.confianca = 'D'; q.eliminacao = true; q.causa = 'nao_sabia'; }
+        });
+        return { id: id || 'sp', concursoId: conc.id, data: '2026-10-05', minutos: 200, regras: N.regrasDoConcurso(conc), questoes: qs, criadoEm: '2026-10-05T10:00:00Z' };
+      }
+      var s1 = sim([8, 2, 8, 6, 40], 'sp1'), c1 = N.corrigir(s1);
+      igual(c1.total.acertos, 64, 'caso 1: 64 acertos');
+      igual(c1.total.pontos, 64, 'caso 1: 64 pontos (acima do mínimo total de 40)');
+      igual(c1.eliminado, true, 'caso 1: ELIMINADO');
+      igual(JSON.stringify(c1.vermelho), JSON.stringify(['Eliminado: Administração Pública 2/8, mínimo 3']), 'caso 1: só por "Administração Pública 2/8, mínimo 3"');
+      var c2 = N.corrigir(sim([8, 8, 8, 6, 19], 'sp2'));
+      igual(c2.eliminado, true, 'caso 2: ELIMINADO');
+      igual(JSON.stringify(c2.vermelho), JSON.stringify(['Eliminado: P2 19/50, mínimo 20']), 'caso 2: só por "P2 19/50, mínimo 20"');
+      var c3 = N.corrigir(sim([8, 8, 8, 6, 20], 'sp3'));
+      ok(!c3.eliminado && c3.vermelho.length === 0, 'no limite (ESP 20, resto no máximo): não eliminado');
+      var c4 = N.corrigir(sim([8, 0, 8, 6, 19], 'sp4'));
+      igual(JSON.stringify(c4.vermelho), JSON.stringify(['Zero em Administração Pública (0/8): zero em disciplina elimina.', 'Eliminado: Administração Pública 0/8, mínimo 3', 'Eliminado: P2 19/50, mínimo 20']),
+        'convivem com o "zero elimina": todos os motivos aparecem juntos');
+      var c5 = N.corrigir(sim([3, 3, 3, 2, 20], 'sp5'));
+      igual(JSON.stringify(c5.vermelho), JSON.stringify(['Total de 31 pontos, abaixo do mínimo de 40.', 'Eliminado: P1 11/30, mínimo 12']),
+        'convivem com o mínimo total: blocos no mínimo, mas P1 11/30 e total 31');
+      // Cópia das regras vigentes no dia
+      var guardado = JSON.stringify(s1.regras);
+      conc.blocos[1].minimoAcertos = 1; conc.grupos = [];
+      igual(JSON.stringify(s1.regras), guardado, 'mudar o cadastro depois não mexe na cópia guardada no simulado');
+      igual(JSON.stringify(N.corrigir(s1).vermelho), JSON.stringify(['Eliminado: Administração Pública 2/8, mínimo 3']), 'o simulado antigo continua corrigido pelas regras do dia');
+      igual(N.corrigir(sim([8, 2, 8, 6, 40], 'sp6')).eliminado, false, 'um simulado novo usa o cadastro atual (mínimo de AP agora 1)');
+      // Na tela
+      var lab = D.labInicial('A');
+      conc.blocos[1].minimoAcertos = 3; conc.grupos = [{ nome: 'P1', blocos: [0, 1, 2, 3], minimoAcertos: 12 }, { nome: 'P2', blocos: [4], minimoAcertos: 20 }];
+      lab.concursos.push(conc); lab.simulados.push(s1); D.salvarLab(lab);
+      var div = document.createElement('div'); div.innerHTML = App.htmlDaTela('#/A/simulado/sp1');
+      var verm = div.querySelectorAll('.alerta.vermelho li');
+      igual(verm.length === 1 ? verm[0].textContent : verm.length + ' motivos', 'Eliminado: Administração Pública 2/8, mínimo 3', 'tela da correção: alerta vermelho com o motivo');
+      var cad = App.htmlDaTela('#/A/concursos');
+      ok(cad.indexOf('<strong>P1</strong> (EB, Administração Pública, LP, IND) mínimo 12 acertos') >= 0 && cad.indexOf('<strong>P2</strong> (ESP) mínimo 20 acertos') >= 0, 'tela de concursos mostra os grupos e seus mínimos');
+      ok(N.mdSimulado(lab, s1).indexOf('ELIMINADO pelas regras cadastradas: Eliminado: Administração Pública 2/8, mínimo 3') >= 0, 'relatório do simulado (.md) traz o motivo');
+    });
+
     /* ---------- extras ---------- */
     teste('extra', 'Colar gabarito e marcações como sequência de letras', function (ok, igual) {
       var g = N.lerSequencia('ab cde*\nX', 5, 'gabarito');

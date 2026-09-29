@@ -19,7 +19,8 @@ A ferramenta não ensina, não gera questões e não substitui os mentores. Ela 
 SEDUC/CE e Cruzeta/RN vêm **em branco** de propósito (nenhum peso, número de alternativas ou regra foi inventado). Enquanto não tiverem blocos, o site mostra *"preencher pelo edital antes de lançar simulado"* e não deixa lançar.
 
 1. Abra **Laboratório A → Concursos e pares → Editar**.
-2. Pelo edital, preencha: número de alternativas, pontuação mínima, se zero em disciplina elimina, meta e os **blocos** (nome, nº de questões, pontos por questão e as linhas do edital, uma por linha).
+2. Pelo edital, preencha: número de alternativas, pontuação mínima, se zero em disciplina elimina, meta e os **blocos** (nome, nº de questões, pontos por questão, mínimo de acertos no bloco se o edital tiver, e as linhas do edital, uma por linha).
+   Se o edital exigir mínimo numa parte da prova formada por vários blocos, crie um **grupo de blocos**: nome, os blocos que o compõem e o mínimo de acertos. Abaixo de qualquer mínimo sai o alerta vermelho "Eliminado: [bloco ou grupo] x/y, mínimo z", junto com os demais motivos.
 3. Salve.
 
 No Laboratório B, Jucurutu/RN já vem cadastrado (5 blocos, 100 pontos). Só as linhas de Conhecimentos Pedagógicos vieram preenchidas; complete as dos outros blocos quando quiser.

@@ -162,8 +162,11 @@
       numAlternativas: conc.numAlternativas, minimoPontos: conc.minimoPontos,
       zeroElimina: conc.zeroElimina, meta: conc.meta,
       blocos: (conc.blocos || []).map(function (b) {
-        return { nome: b.nome, numQuestoes: b.numQuestoes, pontosPorQuestao: b.pontosPorQuestao, assuntos: (b.assuntos || []).slice() };
-      })
+        return { nome: b.nome, numQuestoes: b.numQuestoes, pontosPorQuestao: b.pontosPorQuestao, assuntos: (b.assuntos || []).slice(),
+          minimoAcertos: b.minimoAcertos == null ? null : b.minimoAcertos };
+      }),
+      // grupos de blocos com mínimo próprio: { nome, blocos: [índices dos blocos], minimoAcertos }
+      grupos: (conc.grupos || []).map(function (g) { return { nome: g.nome, blocos: g.blocos.slice(), minimoAcertos: g.minimoAcertos }; })
     }));
   }
 
@@ -295,6 +298,17 @@
     }
     blocos.forEach(function (b) {
       if (b.validas > 0 && b.acertos === 0 && R.zeroElimina === true) vermelho.push('Zero em ' + b.nome + ' (0/' + b.validas + '): zero em disciplina elimina.');
+    });
+    // Mínimo de acertos por bloco (opcional)
+    blocos.forEach(function (b, i) {
+      var min = R.blocos[i].minimoAcertos;
+      if (min != null && b.validas > 0 && b.acertos < min) vermelho.push('Eliminado: ' + b.nome + ' ' + b.acertos + '/' + b.validas + ', mínimo ' + fmtNum(min));
+    });
+    // Grupos de blocos com mínimo próprio (opcional)
+    (R.grupos || []).forEach(function (g) {
+      var ac = 0, val = 0;
+      g.blocos.forEach(function (i) { if (blocos[i]) { ac += blocos[i].acertos; val += blocos[i].validas; } });
+      if (g.minimoAcertos != null && val > 0 && ac < g.minimoAcertos) vermelho.push('Eliminado: ' + g.nome + ' ' + ac + '/' + val + ', mínimo ' + fmtNum(g.minimoAcertos));
     });
     blocos.forEach(function (b) {
       if (b.validas > 0 && b.acertos / b.validas < 0.2) amarelo.push(b.nome + ': ' + fmtPct(b.acertos, b.validas) + ' de acerto, abaixo de 20%.');
