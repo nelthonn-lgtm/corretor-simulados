@@ -396,8 +396,10 @@
         if (idx < 0) { naoContaram.push(r); return; }
         // D2, D7 e D21 só contam acerto em questão nova.
         if (r.resultado === 'acertou' && idx > 0 && !r.questaoNova) { naoContaram.push(r); return; }
-        ciclo.etapas[idx].registro = r;
         var ultima = idx === ETAPAS_A.length - 1;
+        // Acerto com chute (CH) no D21 não fecha o erro: o D21 continua pendente.
+        if (r.resultado === 'acertou' && ultima && r.confianca === 'CH') { naoContaram.push(r); return; }
+        ciclo.etapas[idx].registro = r;
         if (r.resultado === 'errou') {
           if (cfg.novoCicloAoErrar || ultima) ciclos.push(montarCiclo(r.data, cfg));
         } else if (ultima) {
@@ -656,27 +658,81 @@
       sim.questoes.forEach(function (q) {
         var c = classificar(q);
         if (c === 'ANULADA') return;
-        var acertou = ehAcerto(c) && q.confianca !== 'CH';
-        ev.push({ assunto: assuntoDaQuestao(q, sim.regras), data: sim.data, total: 1, acertos: acertou ? 1 : 0, risco: acertou && c === 'RISCO' ? 1 : 0, nova: true });
+        var e = { assunto: assuntoDaQuestao(q, sim.regras), data: sim.data, nova: true };
+        ev.push(ehAcerto(c) ? eventoAcerto(e, q.confianca, !!q.eliminacao) : eventoErro(e));
       });
     });
     (lab.sessoes || []).forEach(function (s) {
-      (s.itens || []).forEach(function (it) { ev.push({ assunto: it.assunto, data: s.data, total: it.questoes || 0, acertos: it.acertos || 0, risco: 0, nova: true }); });
+      (s.itens || []).forEach(function (it) { ev.push(eventoSessao({ assunto: it.assunto, data: s.data, nova: true }, it)); });
     });
-    if (lab.lab === 'A') {
-      var itens = {};
-      listarErros(lab).forEach(function (e) { itens[e.id] = e; });
-      (lab.revisoes || []).forEach(function (r) {
+    var itens = {};
+    if (lab.lab === 'A') listarErros(lab).forEach(function (e) { itens[e.id] = e; });
+    (lab.revisoes || []).forEach(function (r) {
+      var e;
+      if (lab.lab === 'A') {
         var it = itens[r.itemId];
         if (!it) return;
-        ev.push({ assunto: it.assunto, data: r.data, total: 1, acertos: r.resultado === 'acertou' ? 1 : 0, risco: 0, nova: !!r.questaoNova });
-      });
-    } else {
-      (lab.revisoes || []).forEach(function (r) {
-        ev.push({ assunto: r.linha, data: r.data, total: 1, acertos: r.resultado === 'acertou' && r.confianca !== 'CH' ? 1 : 0, risco: 0, nova: true });
-      });
-    }
+        e = { assunto: it.assunto, data: r.data, nova: !!r.questaoNova };
+      } else {
+        e = { assunto: r.linha, data: r.data, nova: true };
+      }
+      ev.push(r.resultado === 'acertou' ? eventoAcerto(e, r.confianca, r.eliminacao) : eventoErro(e));
+    });
     return ev;
+  }
+
+  /**
+   * Regra única de acerto para a retenção, igual em simulado, revisão do A e revisão do B:
+   *   CH → conta como erro · C/D com eliminação escrita → acerto · C/D sem eliminação escrita → acerto RISCO
+   * Confiança ou eliminação ausentes (registro antigo) → "não informado": fica fora da conta.
+   */
+  function situacaoAcerto(confianca, eliminacao) {
+    if (confianca === 'CH') return 'erro';
+    if (confianca !== 'C' && confianca !== 'D') return null;
+    if (eliminacao === true) return 'acerto';
+    if (eliminacao === false) return 'risco';
+    return null;
+  }
+
+  function eventoErro(e) { e.total = 1; e.acertos = 0; e.risco = 0; return e; }
+
+  function eventoAcerto(e, confianca, eliminacao) {
+    var sit = situacaoAcerto(confianca, eliminacao);
+    e.total = 1;
+    if (sit == null) { e.naoInformado = true; e.acertos = 0; e.risco = 0; return e; }
+    e.acertos = sit === 'erro' ? 0 : 1;
+    e.risco = sit === 'risco' ? 1 : 0;
+    return e;
+  }
+
+  /** Sessão: acertos com CH viram erro; "acertos sem eliminação escrita" (sem contar os de CH) são RISCO. */
+  function eventoSessao(e, it) {
+    var q = it.questoes || 0, a = it.acertos || 0;
+    e.total = q;
+    if (a > 0 && (it.acertosCH == null || it.acertosSemElim == null)) { e.naoInformado = true; e.acertos = 0; e.risco = 0; return e; }
+    e.acertos = a - (it.acertosCH || 0);
+    e.risco = it.acertosSemElim || 0;
+    return e;
+  }
+
+  /** Registros antigos sem confiança ou eliminação escrita: revisões acertadas e assuntos de sessão com acertos. */
+  function registrosNaoInformados(lab) {
+    var n = 0;
+    contatos(lab).forEach(function (e) { if (e.naoInformado) n++; });
+    return n;
+  }
+
+  /** Validação dos dois campos novos de cada assunto da sessão. */
+  function pendenciasAcertosSessao(acertos, ch, semElim) {
+    var p = [];
+    if (!inteiroNaoNegativo(ch)) p.push('informe os acertos com chute (CH) (0 se nenhum).');
+    else if (inteiroNaoNegativo(acertos) && ch > acertos) p.push('acertos com chute (CH) maiores que os acertos.');
+    if (!inteiroNaoNegativo(semElim)) p.push('informe os acertos sem eliminação escrita (0 se nenhum).');
+    else if (inteiroNaoNegativo(acertos) && semElim > acertos) p.push('acertos sem eliminação escrita maiores que os acertos.');
+    if (!p.length && inteiroNaoNegativo(acertos) && ch + semElim > acertos) {
+      p.push('acertos com chute + acertos sem eliminação escrita passam dos acertos (os de chute não entram em "sem eliminação escrita").');
+    }
+    return p;
   }
 
   /**
@@ -687,15 +743,20 @@
     var ev = contatos(lab);
     var primeiro = {};
     ev.forEach(function (e) { if (!primeiro[e.assunto] || e.data < primeiro[e.assunto]) primeiro[e.assunto] = e.data; });
-    var porAssunto = {}, chaves = [], ac = 0, tot = 0, risco = 0;
+    var porAssunto = {}, chaves = [], ac = 0, tot = 0, risco = 0, foraDaConta = 0;
     ev.forEach(function (e) {
       if (!e.nova || !e.total || !dentro(e.data, per)) return;
       if (diasEntre(primeiro[e.assunto], e.data) < 21) return;
+      if (e.naoInformado) { foraDaConta++; return; }
       if (!porAssunto[e.assunto]) { porAssunto[e.assunto] = { assunto: e.assunto, primeiro: primeiro[e.assunto], acertos: 0, total: 0, risco: 0 }; chaves.push(e.assunto); }
       porAssunto[e.assunto].acertos += e.acertos; porAssunto[e.assunto].total += e.total; porAssunto[e.assunto].risco += e.risco;
       ac += e.acertos; tot += e.total; risco += e.risco;
     });
-    return { acertos: ac, total: tot, risco: risco, linhas: chaves.sort().map(function (k) { return porAssunto[k]; }) };
+    return { acertos: ac, total: tot, risco: risco, naoInformados: foraDaConta, linhas: chaves.sort().map(function (k) { return porAssunto[k]; }) };
+  }
+
+  function textoNaoInformado(n) {
+    return n.naoInformados + ' registro(s) antigo(s) sem confiança ou eliminação escrita (' + n.retencao.naoInformados + ' ficaram fora da retenção do período)';
   }
 
   /** "x/y, dos quais z RISCO" */
@@ -801,6 +862,7 @@
     return {
       pph: pontoPorHora(lab, per),
       retencao: retencao21(lab, per),
+      naoInformados: registrosNaoInformados(lab),
       migracao: migracaoCausas(lab, per),
       vizinhos: vizinhosPorSemana(lab, per),
       custo: custoOperacao(lab, per)
@@ -950,6 +1012,7 @@
     var md = '';
     md += '- Ponto por hora (métrica principal): ' + textoPph(n.pph.pontos, n.pph.minutos, n.pph.valor) + '\n';
     md += '- Retenção aos 21 dias (acerto com CH conta como erro): ' + textoRetencao(n.retencao) + '\n';
+    md += '  - Não informado: ' + textoNaoInformado(n) + '\n';
     md += '- Migração da causa do erro (leitura + distrator em proporção a "não sabia o conteúdo"): ' + textoMigracao(n.migracao) + '\n';
     md += '- Discriminação entre vizinhos: ' + fmtPct(n.vizinhos.acertos, n.vizinhos.total) + '\n';
     md += '- Custo de operação: ' + n.custo.total + ' min ÷ ' + n.custo.nSemanas + ' semana(s) = ' + fmtNum(n.custo.media, 1) + ' min/semana\n';
@@ -1096,7 +1159,7 @@
     moverCaixa: moverCaixa, estadoCaixasB: estadoCaixasB, vencidasB: vencidasB, proximasB: proximasB,
     atividadeLinhaDia: atividadeLinhaDia, linhasDoDia: linhasDoDia, registroEstadoB: registroEstadoB,
     primeiraSessao: primeiraSessao, periodoPlacar: periodoPlacar, faseJanela: faseJanela, testeDePe: testeDePe,
-    pontoPorHora: pontoPorHora, textoPph: textoPph, textoPphLinha: textoPphLinha, pphLadoALado: pphLadoALado, retencao21: retencao21, textoRetencao: textoRetencao, migracaoCausas: migracaoCausas, textoMigracao: textoMigracao,
+    pontoPorHora: pontoPorHora, textoPph: textoPph, textoPphLinha: textoPphLinha, pphLadoALado: pphLadoALado, retencao21: retencao21, textoRetencao: textoRetencao, situacaoAcerto: situacaoAcerto, registrosNaoInformados: registrosNaoInformados, textoNaoInformado: textoNaoInformado, pendenciasAcertosSessao: pendenciasAcertosSessao, migracaoCausas: migracaoCausas, textoMigracao: textoMigracao,
     vizinhosPorSemana: vizinhosPorSemana, custoOperacao: custoOperacao, numerosMetodo: numerosMetodo, veredito: veredito,
     textoPeriodo: textoPeriodo, slug: slug, nomeArquivoSimulado: nomeArquivoSimulado, linhasDriveSimulado: linhasDriveSimulado,
     mdSimulado: mdSimulado, mdPlacar: mdPlacar, mdEstadoLab: mdEstadoLab, csvLab: csvLab

@@ -50,7 +50,7 @@ O rascunho fica guardado enquanto você preenche; dá para fechar a página e co
 ## Registrar uma sessão de estudo
 
 1. **Sessões de estudo** → data e concurso.
-2. Para cada assunto da sessão: **minutos**, questões feitas e acertos. Para cada erro, confiança e causa.
+2. Para cada assunto da sessão: **minutos**, questões feitas, acertos, **acertos com chute (CH)** e **acertos sem eliminação escrita** (sem contar os de chute; os dois somados não passam dos acertos). Para cada erro, confiança e causa.
    Use **+ Outro assunto nesta sessão** quando estudou mais de um assunto.
 3. **Salvar sessão.** Sem minutos a sessão não é salva.
 
@@ -60,8 +60,8 @@ Os minutos gastos **operando o sistema** (colar prompt, imprimir, transferir, gr
 
 **Laboratório A — Revisões D0–D21**
 - Cada erro (de simulado ou de sessão) vira um item com D0 (mesmo dia), D2 (+2 dias), D7 (+7) e D21 (+21).
-- Em **Vencidas hoje**, registre o resultado da etapa. No D2, confirme que foi em item novo ou estruturalmente diferente; no D7 e no D21, que foi em questão nova.
-- O erro só **fecha** com o D21 acertado em questão nova.
+- Em **Vencidas hoje**, registre o resultado da etapa. No D2, confirme que foi em item novo ou estruturalmente diferente; no D7 e no D21, que foi em questão nova. Se acertou, informe a confiança (C, D ou CH) e se fez eliminação escrita.
+- O erro só **fecha** com o D21 acertado em questão nova — e acerto com chute (CH) no D21 **não** fecha.
 - Errou em qualquer etapa: abre novo ciclo com D0 na data desse erro (dá para mudar essa regra e os intervalos em **Configurações**).
 - Revisão vencida não some da lista até ser registrada. **Próximos 7 dias** mostra o que vem aí.
 
@@ -69,7 +69,7 @@ Os minutos gastos **operando o sistema** (colar prompt, imprimir, transferir, gr
 - Caixas de 1, 3, 7, 16 e 35 dias (editáveis em **Configurações**).
 - Errar uma linha (em simulado, sessão ou revisão) leva a linha para a **caixa 1**.
 - Acertou sem ser chute → sobe uma caixa. Acerto com **CH** não sobe.
-- Toda revisão é registrada como feita em questão nova.
+- Toda revisão é registrada como feita em questão nova. Se acertou, informe a confiança e se fez eliminação escrita.
 
 ## Levar as linhas para o Drive
 
@@ -89,7 +89,7 @@ Arquivos para baixar (aba **Drive e exportar** de cada laboratório):
 O placar é a **única** tela que lê os dois laboratórios. No topo fica sempre a ressalva: *um candidato só, em concursos, bancas, assuntos e tempos diferentes; é uma impressão medida, com denominador e data.*
 
 - **Ponto por hora (principal), por assunto:** pontos no simulado naquele assunto ÷ horas de estudo registradas naquele assunto no mesmo período. Assunto sem minutos aparece como **sem medição**, nunca como zero. A tela mostra a tabela por assunto com A e B lado a lado (numerador e denominador em cada linha); a última linha soma os assuntos medidos e é o número usado no veredito.
-- **Retenção aos 21 dias:** acerto em questão nova de um assunto 21 dias ou mais depois do primeiro contato com ele. Acerto com confiança **CH não conta** (entra como erro no denominador). Acerto RISCO sem CH conta e aparece à parte: `x/y, dos quais z RISCO`.
+- **Retenção aos 21 dias:** acerto em questão nova de um assunto 21 dias ou mais depois do primeiro contato com ele. Acerto com confiança **CH não conta** (entra como erro no denominador). Acerto sem eliminação escrita (e sem CH) é RISCO: conta e aparece à parte, `x/y, dos quais z RISCO`. A regra é a mesma em simulados, sessões, revisões do A e revisões do B. Registros antigos, feitos antes desses campos existirem, ficam como **não informado**: não entram na conta, e o placar mostra quantos são.
 - **Migração da causa do erro:** as cinco causas por semana; destaca se "leu errado" + "distrator" estão diminuindo em proporção a "não sabia o conteúdo".
 - **Discriminação entre vizinhos:** acerto nas questões marcadas com par vizinho, por semana.
 - **Custo de operação:** minutos por semana operando o sistema.

@@ -348,7 +348,7 @@
       B2.sessoes = [{ id: 'sy', data: '2026-10-01', concursoId: 'jucurutu-rn', concursoNome: 'Jucurutu/RN', itens: [{ assunto: 'Y', bloco: '', minutos: 30, questoes: 2, acertos: 2, erros: [] }], criadoEm: 'a' }];
       B2.revisoes = [
         { id: 'r1', linha: 'Y', data: '2026-10-25', resultado: 'acertou', confianca: 'CH', causa: '', questaoNova: true, criadoEm: 'b' },
-        { id: 'r2', linha: 'Y', data: '2026-10-26', resultado: 'acertou', confianca: 'C', causa: '', questaoNova: true, criadoEm: 'c' }];
+        { id: 'r2', linha: 'Y', data: '2026-10-26', resultado: 'acertou', confianca: 'C', eliminacao: true, causa: '', questaoNova: true, criadoEm: 'c' }];
       igual(N.textoRetencao(N.retencao21(B2, per)), '1/2, dos quais 0 RISCO', 'revisão de caixa acertada com CH conta como erro');
       // Veredito
       var nA = N.numerosMetodo(A, per), nB = N.numerosMetodo(B, per);
@@ -399,6 +399,108 @@
       igual(linhas[2] ? linhas[2].join(' | ') : '', 'Total dos assuntos medidos (veredito) | 14 pts ÷ 1 h (60 min) = 14 pts/h | 12 pts ÷ 2 h (120 min) = 6 pts/h', 'linha do total usado no veredito');
       var md = N.mdPlacar(A, B, D.geral(), '2026-11-30');
       ok(md.indexOf('| X | 14 pts ÷ 1 h (60 min) = 14 pts/h | 12 pts ÷ 2 h (120 min) = 6 pts/h |') >= 0, 'a mesma tabela sai no Placar A×B (.md)');
+      N.fixarHoje(null);
+    });
+
+    /* ---------- auxiliar dos testes 13 e 14 ---------- */
+    var PER_OUT = { primeiraSessaoB: '2026-10-01' };
+    function sessaoY(L, id, data, assunto, q, a, ch, se, nErros) {
+      var erros = [];
+      for (var i = 0; i < (nErros || 0); i++) erros.push({ confianca: 'D', causa: 'nao_sabia', marcou: '', gabarito: '' });
+      var it = { assunto: assunto, bloco: '', minutos: 30, questoes: q, acertos: a, erros: erros };
+      if (ch != null) it.acertosCH = ch;
+      if (se != null) it.acertosSemElim = se;
+      return { id: id, data: data, concursoId: 'c', concursoNome: 'Conc', alvo: 'CE', itens: [it], criadoEm: data + 'T10:00:00Z' };
+    }
+    /**
+     * Mesmo histórico nos dois laboratórios: sessão em 01/10 com 1 erro na linha "Y";
+     * três revisões acertadas (C, com eliminação) antes de 21 dias; a revisão que conta para a retenção
+     * é a de 28/10 (27 dias depois), com a confiança e a eliminação dadas.
+     *   A: D0 01/10, D2 03/10, D7 08/10, D21 28/10.   B: caixa 1→2 (02/10), 2→3 (05/10), 3→4 (12/10), revisão 28/10.
+     */
+    function labsRevisao(conf, elim) {
+      var A = D.labInicial('A'); A.sessoes = [sessaoY('A', 'sy', '2026-10-01', 'Y', 3, 2, 0, 0, 1)];
+      function ra(etapa, data, nova, c, e, k) { return { id: 'ra' + k, itemId: 'sy:a0e0', etapa: etapa, ciclo: 1, data: data, resultado: 'acertou', questaoNova: nova, confianca: c, eliminacao: e, causa: '', criadoEm: data + 'T12:00:00Z' }; }
+      A.revisoes = [ra('D0', '2026-10-01', false, 'C', true, 0), ra('D2', '2026-10-03', true, 'C', true, 1), ra('D7', '2026-10-08', true, 'C', true, 2), ra('D21', '2026-10-28', true, conf, elim, 3)];
+      var B = D.labInicial('B'); B.sessoes = [sessaoY('B', 'sy', '2026-10-01', 'Y', 3, 2, 0, 0, 1)];
+      function rb(data, c, e, k) { return { id: 'rb' + k, linha: 'Y', data: data, resultado: 'acertou', confianca: c, eliminacao: e, causa: '', questaoNova: true, criadoEm: data + 'T12:00:00Z' }; }
+      B.revisoes = [rb('2026-10-02', 'C', true, 0), rb('2026-10-05', 'C', true, 1), rb('2026-10-12', 'C', true, 2), rb('2026-10-28', conf, elim, 3)];
+      return { A: A, B: B };
+    }
+    function resumoRet(r) { return JSON.stringify({ acertos: r.acertos, total: r.total, risco: r.risco, naoInformados: r.naoInformados }); }
+
+    /* ---------- 13 ---------- */
+    teste(13, 'Um acerto CH em revisão do A e em revisão do B produz exatamente o mesmo efeito na retenção (e o mesmo vale para RISCO)', function (ok, igual) {
+      D.usarBackend(D.backendMemoria());
+      [[['CH', true], '0/1, dos quais 0 RISCO', 'acerto CH (com eliminação) conta como erro'],
+       [['CH', false], '0/1, dos quais 0 RISCO', 'acerto CH (sem eliminação) conta como erro'],
+       [['D', false], '1/1, dos quais 1 RISCO', 'acerto D sem eliminação escrita conta e é RISCO'],
+       [['C', true], '1/1, dos quais 0 RISCO', 'acerto C com eliminação escrita conta e não é RISCO']].forEach(function (caso) {
+        var L = labsRevisao(caso[0][0], caso[0][1]);
+        var per = N.periodoPlacar(PER_OUT, L.A, L.B, '2026-11-30');
+        var rA = N.retencao21(L.A, per), rB = N.retencao21(L.B, per);
+        igual(resumoRet(rA), resumoRet(rB), caso[2] + ': A e B idênticos');
+        igual(N.textoRetencao(rA) + ' | ' + N.textoRetencao(rB), caso[1] + ' | ' + caso[1], caso[2] + ': texto nos dois');
+      });
+      // Na tela do placar, a linha da retenção mostra o mesmo texto para A e B
+      var L = labsRevisao('CH', true);
+      D.salvarLab(L.A); D.salvarLab(L.B); D.salvarGeral({ versao: 1, primeiraSessaoB: '2026-10-01' });
+      N.fixarHoje('2026-11-30');
+      var div = document.createElement('div'); div.innerHTML = App.htmlDaTela('#/placar');
+      var linhaRet = [].filter.call(div.querySelectorAll('table.cinco tbody tr'), function (tr) { return tr.children[0].textContent.indexOf('Retenção aos 21 dias') === 0; })[0];
+      igual(linhaRet ? linhaRet.children[1].textContent + ' | ' + linhaRet.children[2].textContent : '', '0/1, dos quais 0 RISCO | 0/1, dos quais 0 RISCO', 'tela do placar: mesma retenção em A e B');
+      N.fixarHoje(null);
+      // As regras próprias de cada método continuam: CH não sobe caixa; CH no D21 não fecha o erro
+      var cx = N.estadoCaixasB(L.B)[0];
+      igual(cx.caixa, 4, 'B: acerto CH na caixa 4 não sobe (fica na 4)');
+      var eA = N.estadoRevisoesA(L.A)[0];
+      ok(!eA.fechado && eA.proxima && eA.proxima.nome === 'D21', 'A: acerto CH no D21 não fecha o erro; o D21 continua pendente');
+      L.A.revisoes.push({ id: 'ra9', itemId: 'sy:a0e0', etapa: 'D21', ciclo: 1, data: '2026-10-29', resultado: 'acertou', questaoNova: true, confianca: 'C', eliminacao: true, causa: '', criadoEm: '2026-10-29T12:00:00Z' });
+      eA = N.estadoRevisoesA(L.A)[0];
+      ok(eA.fechado && eA.dataFechamento === '2026-10-29', 'A: depois, D21 acertado com C em questão nova fecha');
+      var semEl = labsRevisao('D', false);
+      ok(N.estadoRevisoesA(semEl.A)[0].fechado, 'A: acerto D sem eliminação no D21 fecha (a regra só barra CH)');
+      igual(N.estadoCaixasB(semEl.B)[0].caixa, 5, 'B: acerto D sem eliminação sobe de caixa (a regra só barra CH)');
+    });
+
+    /* ---------- 14 ---------- */
+    teste(14, 'Sessões com acertos CH e sem eliminação escrita; registros antigos ficam como "não informado", contados no placar', function (ok, igual) {
+      D.usarBackend(D.backendMemoria());
+      igual(N.pendenciasAcertosSessao(4, 1, 2).length, 0, 'válido: 1 CH + 2 sem eliminação em 4 acertos');
+      ok(/acertos com chute/.test(N.pendenciasAcertosSessao(4, null, 0)[0] || ''), 'acertos com chute é obrigatório');
+      ok(/sem eliminação escrita/.test(N.pendenciasAcertosSessao(4, 0, null)[0] || ''), 'acertos sem eliminação escrita é obrigatório');
+      ok(/maiores que os acertos/.test(N.pendenciasAcertosSessao(4, 5, 0)[0] || ''), 'CH não pode passar dos acertos');
+      ok(/maiores que os acertos/.test(N.pendenciasAcertosSessao(4, 0, 5)[0] || ''), 'sem eliminação não pode passar dos acertos');
+      ok(/passam dos acertos/.test(N.pendenciasAcertosSessao(4, 2, 3)[0] || ''), 'CH + sem eliminação não podem passar dos acertos');
+      // Mesma sessão em A e B: 5 questões, 4 acertos, 1 CH, 2 sem eliminação → 3/5, dos quais 2 RISCO
+      var labs = {};
+      ['A', 'B'].forEach(function (L) {
+        var lab = D.labInicial(L);
+        lab.sessoes = [sessaoY(L, 's1', '2026-10-01', 'Z', 2, 2, 0, 0, 0), sessaoY(L, 's2', '2026-10-25', 'Z', 5, 4, 1, 2, 1)];
+        labs[L] = lab;
+      });
+      var per = N.periodoPlacar(PER_OUT, labs.A, labs.B, '2026-11-30');
+      igual(N.textoRetencao(N.retencao21(labs.A, per)) + ' | ' + N.textoRetencao(N.retencao21(labs.B, per)), '3/5, dos quais 2 RISCO | 3/5, dos quais 2 RISCO', 'sessão: CH vira erro, sem eliminação é RISCO — igual em A e B');
+      // Registros antigos, sem os campos novos
+      var A = D.labInicial('A');
+      A.sessoes = [sessaoY('A', 'w1', '2026-10-01', 'W', 1, 0, 0, 0, 1), sessaoY('A', 'w2', '2026-10-26', 'W', 4, 3, null, null, 1)];
+      A.revisoes = [
+        { id: 'o1', itemId: 'w1:a0e0', etapa: 'D0', ciclo: 1, data: '2026-10-01', resultado: 'acertou', questaoNova: false, causa: '', criadoEm: 'o1' },
+        { id: 'o2', itemId: 'w1:a0e0', etapa: 'D2', ciclo: 1, data: '2026-10-28', resultado: 'acertou', questaoNova: true, causa: '', criadoEm: 'o2' }];
+      var B = D.labInicial('B');
+      B.sessoes = [sessaoY('B', 'w1', '2026-10-01', 'W', 1, 0, 0, 0, 1)];
+      B.revisoes = [{ id: 'o3', linha: 'W', data: '2026-10-28', resultado: 'acertou', confianca: 'C', causa: '', questaoNova: true, criadoEm: 'o3' }];
+      per = N.periodoPlacar(PER_OUT, A, B, '2026-11-30');
+      var nA = N.numerosMetodo(A, per), nB = N.numerosMetodo(B, per);
+      igual(nA.naoInformados + ' / ' + nA.retencao.naoInformados, '3 / 2', 'A: 3 registros antigos (2 revisões acertadas sem confiança e 1 sessão com acertos), 2 deles na janela da retenção');
+      igual(N.textoRetencao(nA.retencao), '0/0 (sem dados)', 'A: nenhum registro antigo é adivinhado como acerto ou erro');
+      igual(nB.naoInformados + ' / ' + nB.retencao.naoInformados, '1 / 1', 'B: revisão acertada com C mas sem eliminação informada fica "não informado"');
+      D.salvarLab(A); D.salvarLab(B); D.salvarGeral({ versao: 1, primeiraSessaoB: '2026-10-01' });
+      N.fixarHoje('2026-11-30');
+      var html = App.htmlDaTela('#/placar');
+      ok(html.indexOf('3 registro(s) antigo(s) sem confiança ou eliminação escrita (2 ficaram fora da retenção do período)') >= 0, 'o placar mostra quantos registros do A estão "não informado"');
+      ok(html.indexOf('1 registro(s) antigo(s) sem confiança ou eliminação escrita (1 ficaram fora da retenção do período)') >= 0, 'o placar mostra quantos registros do B estão "não informado"');
+      ok(N.mdPlacar(A, B, D.geral(), '2026-11-30').indexOf('Não informado: 3 registro(s)') >= 0, 'o Placar A×B (.md) também mostra');
       N.fixarHoje(null);
     });
 

@@ -388,7 +388,7 @@
   function novaSessao(lab) {
     return { data: N.hoje(), concursoId: lab.concursos[0] ? lab.concursos[0].id : '', itens: [novoItemSessao()] };
   }
-  function novoItemSessao() { return { assunto: '', minutos: '', questoes: '', acertos: '', erros: [] }; }
+  function novoItemSessao() { return { assunto: '', minutos: '', questoes: '', acertos: '', acertosCH: '', acertosSemElim: '', erros: [] }; }
 
   function numErrosItem(it) {
     var q = N.lerNumero(it.questoes), a = N.lerNumero(it.acertos);
@@ -432,6 +432,8 @@
       h += '<div class="grade3"><label>Minutos<input type="number" min="1" step="1" inputmode="numeric" data-item-campo="minutos" value="' + esc(it.minutos) + '"></label>';
       h += '<label>Questões feitas<input type="number" min="0" step="1" inputmode="numeric" data-item-campo="questoes" value="' + esc(it.questoes) + '"></label>';
       h += '<label>Acertos<input type="number" min="0" step="1" inputmode="numeric" data-item-campo="acertos" value="' + esc(it.acertos) + '"></label></div>';
+      h += '<div class="grade2"><label>Acertos com chute (CH)<input type="number" min="0" step="1" inputmode="numeric" data-item-campo="acertosCH" value="' + esc(it.acertosCH == null ? '' : it.acertosCH) + '"></label>';
+      h += '<label>Acertos sem eliminação escrita (sem contar os de chute)<input type="number" min="0" step="1" inputmode="numeric" data-item-campo="acertosSemElim" value="' + esc(it.acertosSemElim == null ? '' : it.acertosSemElim) + '"></label></div>';
       h += '<div class="erros-item" id="erros-' + L + '-' + i + '">' + htmlErrosItem(L, it, i) + '</div>';
       if (s.itens.length > 1) h += '<button type="button" class="perigo" data-acao="sess-remover-item" data-i="' + i + '">Remover este assunto</button>';
       h += '</fieldset>';
@@ -455,6 +457,7 @@
       h += '<div class="cartao"><strong>' + N.fmtData(s.data) + '</strong> · ' + esc(s.concursoNome || '—') + ' · ' + min + ' min no total<ul>';
       s.itens.forEach(function (it) {
         h += '<li><strong>' + esc(it.assunto) + '</strong>: ' + it.minutos + ' min · ' + it.questoes + ' questões · acertos ' + N.fmtPct(it.acertos, it.questoes);
+        h += it.acertosCH != null && it.acertosSemElim != null ? ' (com chute: ' + it.acertosCH + '; sem eliminação escrita: ' + it.acertosSemElim + ')' : (it.acertos > 0 ? ' (chute/eliminação: não informado)' : '');
         if (it.erros.length) h += ' · erros: ' + it.erros.map(function (e) { var c = N.causaPorId(e.causa); return esc((c ? c.nome : '—') + ' (' + (e.confianca || '—') + ')'); }).join('; ');
         h += '</li>';
       });
@@ -526,6 +529,9 @@
     if (e.nome !== 'D0') {
       h += '<label class="marcar"><input type="checkbox" name="nova"> ' + (e.nome === 'D2' ? 'Foi em item novo ou estruturalmente diferente' : 'Foi em questão nova') + '</label>';
     }
+    h += '<div class="grade2"><label>Confiança (se acertou)<select name="confianca">' + opcoesConfianca('', '— escolha —') + '</select></label>';
+    h += '<fieldset class="radios"><legend>Fez eliminação escrita? (se acertou)</legend><label class="marcar"><input type="radio" name="elim" value="sim"> Sim</label><label class="marcar"><input type="radio" name="elim" value="nao"> Não</label></fieldset>' + '</div>';
+    if (e.nome === 'D21') h += '<p class="suave">Acerto com chute (CH) no D21 não fecha o erro.</p>';
     h += '<label>Causa (se errou)<select name="causa">' + opcoesCausa('') + '</select></label>';
     h += '<button type="submit" class="primario">Registrar ' + e.nome + '</button></form>';
     return h;
@@ -582,6 +588,7 @@
       h += '<label>Data em que fez a revisão<input type="date" name="data" value="' + dia + '"></label>';
       h += '<fieldset class="radios"><legend>Resultado (questão nova)</legend><label class="marcar"><input type="radio" name="resultado" value="acertou"> Acertou</label><label class="marcar"><input type="radio" name="resultado" value="errou"> Errou</label></fieldset>';
       h += '<label>Confiança (se acertou)<select name="confianca">' + opcoesConfianca('', '— escolha —') + '</select></label>';
+      h += '<fieldset class="radios"><legend>Fez eliminação escrita? (se acertou)</legend><label class="marcar"><input type="radio" name="elim" value="sim"> Sim</label><label class="marcar"><input type="radio" name="elim" value="nao"> Não</label></fieldset>';
       h += '<label>Causa (se errou)<select name="causa">' + opcoesCausa('') + '</select></label></div>';
       h += '<button type="submit" class="primario">Registrar revisão</button></form>';
       h += '<details><summary>Registro para o 11_ESTADO_B</summary>' + blocoTexto('regb-' + vi, N.registroEstadoB(lab, s.linha, ultimaDataLinha(s), est)) + '</details></div>';
@@ -775,6 +782,7 @@
     h += tabela(['Métrica', 'Método A', 'Método B'], [
       ['<strong>Ponto por hora</strong> (principal)', esc(N.textoPph(nA.pph.pontos, nA.pph.minutos, nA.pph.valor)), esc(N.textoPph(nB.pph.pontos, nB.pph.minutos, nB.pph.valor))],
       ['Retenção aos 21 dias<br><span class="suave">acerto com CH conta como erro</span>', esc(N.textoRetencao(nA.retencao)), esc(N.textoRetencao(nB.retencao))],
+      ['Não informado<br><span class="suave">registros antigos, fora da retenção</span>', esc(N.textoNaoInformado(nA)), esc(N.textoNaoInformado(nB))],
       ['Migração da causa do erro<br><span class="suave">leitura + distrator em proporção a "não sabia"</span>', esc(N.textoMigracao(nA.migracao)), esc(N.textoMigracao(nB.migracao))],
       ['Discriminação entre vizinhos', N.fmtPct(nA.vizinhos.acertos, nA.vizinhos.total), N.fmtPct(nB.vizinhos.acertos, nB.vizinhos.total)],
       ['Custo de operação', nA.custo.total + ' min ÷ ' + nA.custo.nSemanas + ' sem. = ' + N.fmtNum(nA.custo.media, 1) + ' min/semana', nB.custo.total + ' min ÷ ' + nB.custo.nSemanas + ' sem. = ' + N.fmtNum(nB.custo.media, 1) + ' min/semana']
@@ -965,11 +973,13 @@
       var itens = s.itens.map(function (it, i) {
         var r = 'Assunto ' + (i + 1) + ': ';
         var m = N.lerNumero(it.minutos), q = N.lerNumero(it.questoes), a = N.lerNumero(it.acertos);
+        var ch = N.lerNumero(it.acertosCH), se = N.lerNumero(it.acertosSemElim);
         if (!String(it.assunto).trim()) erros.push(r + 'informe o assunto/linha.');
         if (!N.inteiroPositivo(m)) erros.push(r + 'informe os minutos (sem minutos a sessão não pode ser salva).');
         if (!N.inteiroNaoNegativo(q)) erros.push(r + 'informe quantas questões fez (0 se nenhuma).');
         if (!N.inteiroNaoNegativo(a)) erros.push(r + 'informe os acertos (0 se nenhum).');
         else if (N.inteiroNaoNegativo(q) && a > q) erros.push(r + 'acertos maiores que questões.');
+        N.pendenciasAcertosSessao(a, ch, se).forEach(function (x) { erros.push(r + x); });
         ajustarErros(it);
         it.erros.forEach(function (e, j) {
           if (!e.confianca) erros.push(r + 'erro ' + (j + 1) + ' sem confiança.');
@@ -977,7 +987,7 @@
         });
         var assunto = String(it.assunto).trim(), bloco = '';
         if (conc) conc.blocos.forEach(function (b) { if (b.nome === assunto || (b.assuntos || []).indexOf(assunto) >= 0) bloco = bloco || b.nome; });
-        return { assunto: assunto, bloco: bloco, minutos: m, questoes: q, acertos: a,
+        return { assunto: assunto, bloco: bloco, minutos: m, questoes: q, acertos: a, acertosCH: ch, acertosSemElim: se,
           erros: it.erros.map(function (e) { return { confianca: e.confianca, causa: e.causa, marcou: String(e.marcou || '').trim().toUpperCase(), gabarito: String(e.gabarito || '').trim().toUpperCase() }; }) };
       });
       if (erros.length) { avisar('erro', 'Sessão não salva: ' + erros.join(' ')); render(true); return; }
@@ -1117,21 +1127,26 @@
       if (!est || !est.proxima) return;
       var etapa = est.proxima, data = form.data.value, res = valorRadio(form, 'resultado');
       var nova = form.nova ? form.nova.checked : false, causa = form.causa.value;
+      var conf = form.confianca.value, elim = valorRadio(form, 'elim');
       var erro = null;
       if (!N.dataValida(data)) erro = 'Informe a data da revisão.';
       else if (data > dia) erro = 'A data da revisão não pode ser no futuro.';
       else if (data < etapa.data) erro = etapa.nome + ' está prevista para ' + N.fmtData(etapa.data) + ': a data da revisão não pode ser anterior.';
       else if (!res) erro = 'Marque se acertou ou errou.';
       else if (res === 'acertou' && etapa.nome !== 'D0' && !nova) erro = 'Acerto no ' + etapa.nome + ' só vale em ' + (etapa.nome === 'D2' ? 'item novo ou estruturalmente diferente' : 'questão nova') + '. Faça uma e registre de novo.';
+      else if (res === 'acertou' && !conf) erro = 'Acertou: escolha a confiança (C, D ou CH).';
+      else if (res === 'acertou' && !elim) erro = 'Acertou: diga se fez eliminação escrita (sim ou não).';
       else if (res === 'errou' && !N.causaPorId(causa)) erro = 'Errou: escolha a causa.';
       if (erro) { avisar('erro', erro); render(true); return; }
       lab.revisoes.push({ id: D.novoId('rev'), itemId: id, etapa: etapa.nome, ciclo: est.numCiclo, data: data, resultado: res,
-        questaoNova: etapa.nome === 'D0' ? false : nova, causa: res === 'errou' ? causa : '', criadoEm: D.agora() });
+        questaoNova: etapa.nome === 'D0' ? false : nova, confianca: res === 'acertou' ? conf : '', eliminacao: res === 'acertou' ? elim === 'sim' : null,
+        causa: res === 'errou' ? causa : '', criadoEm: D.agora() });
       D.salvarLab(lab);
       var depois = null;
       N.estadoRevisoesA(lab).forEach(function (e) { if (e.item.id === id) depois = e; });
       var msg = etapa.nome + ' registrado (' + res + ').';
       if (depois.fechado) msg += ' Erro FECHADO: D21 acertado em questão nova.';
+      else if (etapa.nome === 'D21' && res === 'acertou' && conf === 'CH') msg += ' Acerto com chute (CH) no D21 não fecha o erro: o D21 continua pendente; refaça em questão nova.';
       else if (depois.numCiclo > est.numCiclo) msg += ' Novo ciclo aberto com D0 em ' + N.fmtData(depois.cicloAtual.inicio) + '.';
       else msg += ' Próxima: ' + depois.proxima.nome + ' em ' + N.fmtData(depois.proxima.data) + '.';
       avisar('ok', msg + ' Atualize a linha no CADERNO_DE_ERROS.');
@@ -1143,16 +1158,17 @@
       var est = null;
       N.estadoCaixasB(lab).forEach(function (s) { if (s.linha === linha) est = s; });
       if (!est) return;
-      var data = form.data.value, res = valorRadio(form, 'resultado'), conf = form.confianca.value, causa = form.causa.value;
+      var data = form.data.value, res = valorRadio(form, 'resultado'), conf = form.confianca.value, causa = form.causa.value, elim = valorRadio(form, 'elim');
       var erro = null;
       if (!N.dataValida(data)) erro = 'Informe a data da revisão.';
       else if (data > dia) erro = 'A data da revisão não pode ser no futuro.';
       else if (data < est.proxima) erro = 'A revisão está prevista para ' + N.fmtData(est.proxima) + ': a data não pode ser anterior.';
       else if (!res) erro = 'Marque se acertou ou errou.';
       else if (res === 'acertou' && !conf) erro = 'Acertou: escolha a confiança (C, D ou CH).';
+      else if (res === 'acertou' && !elim) erro = 'Acertou: diga se fez eliminação escrita (sim ou não).';
       else if (res === 'errou' && !N.causaPorId(causa)) erro = 'Errou: escolha a causa.';
       if (erro) { avisar('erro', erro); render(true); return; }
-      lab.revisoes.push({ id: D.novoId('rev'), linha: linha, data: data, resultado: res, confianca: res === 'acertou' ? conf : '',
+      lab.revisoes.push({ id: D.novoId('rev'), linha: linha, data: data, resultado: res, confianca: res === 'acertou' ? conf : '', eliminacao: res === 'acertou' ? elim === 'sim' : null,
         causa: res === 'errou' ? causa : '', questaoNova: true, caixaAntes: est.caixa, criadoEm: D.agora() });
       D.salvarLab(lab);
       var depois = null;
