@@ -25,6 +25,12 @@ SEDUC/CE e Cruzeta/RN vêm **em branco** de propósito (nenhum peso, número de 
 
 No Laboratório B, Jucurutu/RN já vem cadastrado (5 blocos, 100 pontos). Só as linhas de Conhecimentos Pedagógicos vieram preenchidas; complete as dos outros blocos quando quiser.
 
+**Atalho: "Carregar cadastro dos editais".** Em **Configurações** de cada laboratório há esse botão:
+- no Laboratório A, ele preenche SEDUC/CE e Cruzeta/RN com blocos, pesos, alternativas, mínimos e linhas dos editais;
+- no Laboratório B, ele preenche as linhas de todos os blocos de Jucurutu/RN, mantendo o resto.
+
+O botão pede confirmação. Se você já tiver editado algum desses concursos, ele mostra o que vai mudar e pede confirmação de novo. Simulados, sessões, revisões e caixas já registrados não mudam. Campos que o edital deixa em branco (meta, mínimo total de Cruzeta, algumas linhas) ficam para você preencher; se já tiver preenchido, o seu valor fica. Mínimo total ou meta em branco não impedem lançar: aparece um aviso amarelo "campo não preenchido".
+
 ## Lançar um simulado
 
 1. Entre no laboratório certo e toque em **Lançar simulado**.

@@ -560,6 +560,84 @@
       ok(N.mdSimulado(lab, s1).indexOf('ELIMINADO pelas regras cadastradas: Eliminado: Administração Pública 2/8, mínimo 3') >= 0, 'relatório do simulado (.md) traz o motivo');
     });
 
+    /* ---------- 16 ---------- */
+    teste(16, 'Carregar cadastro dos editais: totais e linhas corretos; nada já registrado muda', function (ok, igual) {
+      D.usarBackend(D.backendMemoria());
+      function linhas(c) { var t = 0; c.blocos.forEach(function (b) { t += b.assuntos.length; }); return t; }
+      function registros(lab) { return JSON.stringify([lab.simulados, lab.sessoes, lab.revisoes, lab.operacao, lab.entradasCaixas || null]); }
+      // Laboratório B: Jucurutu como veio, com um simulado já salvo
+      var B = D.labInicial('B');
+      B.simulados.push(simuladoJucurutu([7, 4, 4, 13, 12], '2026-10-05', 'sim-antes-B'));
+      B.revisoes.push({ id: 'rb', linha: 'Conhecimentos Pedagógicos', data: '2026-10-06', resultado: 'acertou', confianca: 'C', eliminacao: true, causa: '', questaoNova: true, criadoEm: 'x' });
+      D.salvarLab(B);
+      // Laboratório A: SEDUC/CE editado pelo usuário (bloco próprio e meta) e com simulado salvo
+      var A = D.labInicial('A');
+      var sed = A.concursos[0];
+      sed.numAlternativas = 4; sed.meta = 60;
+      sed.blocos = [{ nome: 'Didática', numQuestoes: 2, pontosPorQuestao: 1, assuntos: ['Planejamento'] }];
+      A.simulados.push({ id: 'sim-antes-A', concursoId: 'seduc-ce', data: '2026-10-05', minutos: 20, regras: N.regrasDoConcurso(sed), criadoEm: '2026-10-05T10:00:00Z',
+        questoes: [{ n: 1, bloco: 0, gabarito: 'A', anulada: false, justificativa: '', marcada: 'B', assunto: 'Planejamento', confianca: 'D', eliminacao: true, par: '', causa: 'distrator' },
+                   { n: 2, bloco: 0, gabarito: 'C', anulada: false, justificativa: '', marcada: 'C', assunto: '', confianca: 'C', eliminacao: true, par: '', causa: '' }] });
+      A.revisoes.push({ id: 'ra', itemId: 'sim-antes-A:q1', etapa: 'D0', ciclo: 1, data: '2026-10-05', resultado: 'acertou', questaoNova: false, confianca: 'C', eliminacao: true, causa: '', criadoEm: 'y' });
+      A.operacao.push({ id: 'op', data: '2026-10-05', minutos: 10, nota: '', criadoEm: 'z' });
+      D.salvarLab(A);
+      var antes = { A: registros(D.lab('A')), B: registros(D.lab('B')) };
+      var telaAntes = { A: App.htmlDaTela('#/A/simulado/sim-antes-A'), B: App.htmlDaTela('#/B/simulado/sim-antes-B') };
+      var corAntes = { A: JSON.stringify(N.corrigir(D.lab('A').simulados[0])), B: JSON.stringify(N.corrigir(D.lab('B').simulados[0])) };
+
+      // Plano: só o SEDUC/CE conta como editado (pede a segunda confirmação)
+      var planoA = D.planoEditais(D.lab('A')), planoB = D.planoEditais(D.lab('B'));
+      igual(planoA.map(function (p) { return p.nome + ':' + (p.editado ? 'editado' : 'original'); }).join(', '), 'SEDUC/CE:editado, Cruzeta/RN:original', 'A: SEDUC/CE editado pelo usuário, Cruzeta/RN como veio');
+      igual(planoB[0].editado, false, 'B: Jucurutu/RN como veio');
+      ok(planoA[0].mudancas.some(function (m) { return m.indexOf('Blocos: Didática (2 × 1) → Educação Brasileira (8 × 1, mínimo 3)') === 0; }), 'o que vai mudar no SEDUC/CE é mostrado antes (blocos)');
+      ok(!planoA[0].mudancas.some(function (m) { return m.indexOf('Meta') === 0; }), 'meta ("deixar em branco") não muda: fica a que o usuário digitou');
+      // Tela: o painel com as mudanças e a segunda confirmação
+      var div = document.createElement('div'); div.innerHTML = App.htmlDaTela('#/A/config');
+      ok(!!div.querySelector('[data-acao="edital-carregar"]') && div.textContent.indexOf('Carregar cadastro dos editais') >= 0, 'Configurações do A tem o botão');
+      ok(App.htmlDaTela('#/B/config').indexOf('data-acao="edital-carregar"') >= 0, 'Configurações do B tem o botão');
+      ok(App.htmlDaTela('#/B/config').indexOf('SEDUC') < 0 && App.htmlDaTela('#/A/config').indexOf('Jucurutu') < 0, 'cada tela de Configurações só fala dos concursos do próprio laboratório');
+
+      // Carregar
+      var labA = D.lab('A'); D.aplicarPlanoEditais(labA, planoA); D.salvarLab(labA);
+      var labB = D.lab('B'); D.aplicarPlanoEditais(labB, planoB); D.salvarLab(labB);
+      var juc = D.lab('B').concursos[0], seduc = D.lab('A').concursos[0], cruz = D.lab('A').concursos[1];
+      igual(N.totalPontos(juc.blocos), 100, 'Jucurutu soma 100 pontos');
+      igual(linhas(juc), 77, 'Jucurutu tem 77 linhas');
+      igual(juc.minimoPontos + ' / ' + juc.meta + ' / ' + juc.zeroElimina + ' / ' + N.totalQuestoes(juc.blocos), '70 / 80 / true / 50', 'Jucurutu mantém o que já existia (mínimo 70, meta 80, zero elimina, 50 questões)');
+      igual(N.totalQuestoes(seduc.blocos), 80, 'SEDUC/CE tem 80 questões');
+      igual(N.totalPontos(seduc.blocos), 80, 'SEDUC/CE tem 80 pontos');
+      igual(N.totalQuestoes(cruz.blocos), 50, 'Cruzeta/RN tem 50 questões');
+      igual(N.totalPontos(cruz.blocos), 100, 'Cruzeta/RN tem 100 pontos');
+      igual([seduc.banca, seduc.dataProva, seduc.numAlternativas, seduc.minimoPontos, seduc.zeroElimina, seduc.alvo].join(' | '), 'CEV/UECE | 2026-11-22 | 4 | 40 | false | CE', 'SEDUC/CE: banca, prova, alternativas, mínimo, zero elimina, alvo');
+      igual(seduc.blocos.map(function (b) { return b.minimoAcertos; }).join('/'), '3/3/3/2/', 'SEDUC/CE: mínimos por bloco 3/3/3/2 e Específicos sem mínimo próprio');
+      igual(JSON.stringify(seduc.grupos), JSON.stringify([{ nome: 'P1', blocos: [0, 1, 2, 3], minimoAcertos: 12 }, { nome: 'P2', blocos: [4], minimoAcertos: 20 }]), 'SEDUC/CE: grupos P1 (mínimo 12) e P2 (mínimo 20)');
+      igual(seduc.blocos.slice(0, 4).map(function (b) { return b.assuntos.length; }).join('/') + ' + ' + seduc.blocos[4].assuntos.length, '0/0/0/0 + 13', 'SEDUC/CE: linhas em branco nos quatro primeiros blocos; 13 nos Específicos');
+      igual(seduc.meta, 60, 'SEDUC/CE: meta ("deixar em branco") ficou com o valor que o usuário já tinha');
+      igual([cruz.banca, cruz.dataProva, cruz.numAlternativas, cruz.zeroElimina, cruz.alvo, cruz.minimoPontos, cruz.meta].join(' | '), 'IDIB | 2026-11-29 | 5 | true | CRUZETA |  | ', 'Cruzeta/RN: banca, prova, alternativas, zero elimina, alvo; mínimo total e meta em branco');
+      igual(cruz.blocos.map(function (b) { return b.assuntos.length; }).join('/'), '12/0/0/0', 'Cruzeta/RN: 12 linhas em Específicos; demais em branco');
+
+      // Nada já registrado mudou
+      igual(registros(D.lab('A')), antes.A, 'A: simulados, sessões, revisões e minutos idênticos');
+      igual(registros(D.lab('B')), antes.B, 'B: simulados, sessões, revisões e caixas idênticos');
+      igual(JSON.stringify(N.corrigir(D.lab('A').simulados[0])), corAntes.A, 'simulado do A salvo antes: correção idêntica');
+      igual(JSON.stringify(N.corrigir(D.lab('B').simulados[0])), corAntes.B, 'simulado do B salvo antes: correção idêntica');
+      ok(App.htmlDaTela('#/A/simulado/sim-antes-A') === telaAntes.A && App.htmlDaTela('#/B/simulado/sim-antes-B') === telaAntes.B, 'telas dos simulados salvos antes: idênticas');
+
+      // Carregar de novo não muda nada; linha própria do usuário é mantida
+      ok(D.planoEditais(D.lab('A')).concat(D.planoEditais(D.lab('B'))).every(function (p) { return p.mudancas.length === 0; }), 'carregar de novo: nada muda');
+      var B2 = D.labInicial('B'); B2.concursos[0].blocos[4].assuntos.push('Minha linha');
+      D.aplicarPlanoEditais(B2, D.planoEditais(B2));
+      igual(linhas(B2.concursos[0]) + ' · ' + B2.concursos[0].blocos[4].assuntos.slice(-1)[0], '78 · Minha linha', 'Jucurutu: linha que o usuário tinha criado continua lá');
+
+      // Mínimo total e meta em branco: lança, com aviso amarelo "campo não preenchido"
+      igual(N.bloqueiosLancamento(cruz).length, 0, 'Cruzeta/RN pode lançar simulado com mínimo total e meta em branco');
+      var lab = D.lab('A'); lab.rascunho = App.novoRascunho(cruz); D.salvarLab(lab);
+      var lanc = document.createElement('div'); lanc.innerHTML = App.htmlDaTela('#/A/lancar');
+      var am = [].map.call(lanc.querySelectorAll('.alerta.amarelo li'), function (li) { return li.textContent; });
+      igual(am.join(' | '), 'campo não preenchido: pontuação mínima total — tratada como sem mínimo total | campo não preenchido: meta — sem meta', 'aviso amarelo "campo não preenchido" no lançamento');
+      ok(lanc.textContent.indexOf('Lançamento bloqueado') < 0 && !!lanc.querySelector('[data-acao="rasc-salvar"]'), 'o lançamento não fica bloqueado');
+    });
+
     /* ---------- extras ---------- */
     teste('extra', 'Colar gabarito e marcações como sequência de letras', function (ok, igual) {
       var g = N.lerSequencia('ab cde*\nX', 5, 'gabarito');

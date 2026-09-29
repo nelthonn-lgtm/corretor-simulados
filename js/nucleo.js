@@ -170,6 +170,56 @@
     }));
   }
 
+  /** Forma comparável de um concurso (ignora ordem de campos e diferenças como null × ausente). */
+  function normalizarConcurso(c) {
+    var r = regrasDoConcurso(c);
+    r.dataProva = c.dataProva || '';
+    r.meta = c.meta == null ? null : c.meta;
+    r.minimoPontos = c.minimoPontos == null ? null : c.minimoPontos;
+    r.zeroElimina = c.zeroElimina == null ? null : c.zeroElimina;
+    r.numAlternativas = c.numAlternativas == null ? null : c.numAlternativas;
+    return r;
+  }
+
+  function mesmoConcurso(a, b) { return JSON.stringify(normalizarConcurso(a)) === JSON.stringify(normalizarConcurso(b)); }
+
+  /** O que muda de um cadastro para outro, em frases (para o usuário conferir antes de confirmar). */
+  function diferencasConcurso(antes, depois) {
+    if (!antes) return ['O concurso não está no cadastro atual: será criado.'];
+    var A = normalizarConcurso(antes), B = normalizarConcurso(depois), out = [];
+    function v(x) { return x == null || x === '' ? '(em branco)' : x === true ? 'sim' : x === false ? 'não' : typeof x === 'number' ? fmtNum(x) : String(x); }
+    [['nome', 'Nome'], ['banca', 'Banca'], ['dataProva', 'Data da prova'], ['numAlternativas', 'Número de alternativas'], ['minimoPontos', 'Pontuação mínima total'],
+      ['zeroElimina', 'Zero em disciplina elimina'], ['meta', 'Meta'], ['alvo', 'Alvo no CADERNO_DE_ERROS']].forEach(function (c) {
+      var x = A[c[0]], y = B[c[0]];
+      if (c[0] === 'dataProva') { x = x ? fmtData(x) : ''; y = y ? fmtData(y) : ''; }
+      if (JSON.stringify(x) !== JSON.stringify(y)) out.push(c[1] + ': ' + v(x) + ' → ' + v(y));
+    });
+    function bloco(b) { return b.nome + ' (' + b.numQuestoes + ' × ' + fmtNum(b.pontosPorQuestao) + (b.minimoAcertos != null ? ', mínimo ' + b.minimoAcertos : '') + ')'; }
+    var ba = A.blocos.map(bloco).join('; '), bb = B.blocos.map(bloco).join('; ');
+    if (ba !== bb) out.push('Blocos: ' + (ba || '(nenhum)') + ' → ' + (bb || '(nenhum)'));
+    B.blocos.forEach(function (b) {
+      var velho = null;
+      A.blocos.forEach(function (x) { if (x.nome === b.nome) velho = x; });
+      var la = velho ? velho.assuntos : [], lb = b.assuntos;
+      if (JSON.stringify(la) === JSON.stringify(lb)) return;
+      var novas = lb.filter(function (x) { return la.indexOf(x) < 0; }).length, saem = la.filter(function (x) { return lb.indexOf(x) < 0; }).length;
+      out.push('Linhas de ' + b.nome + ': ' + la.length + ' → ' + lb.length + (novas ? ' (+' + novas + ' novas)' : '') + (saem ? ' (−' + saem + ' saem)' : '') + (!novas && !saem ? ' (mesma lista, outra ordem)' : ''));
+    });
+    function grupos(R) { return (R.grupos || []).map(function (g) { return g.nome + ' (' + g.blocos.map(function (i) { return R.blocos[i] ? R.blocos[i].nome : '?'; }).join(', ') + ') mínimo ' + g.minimoAcertos; }).join('; '); }
+    var ga = grupos(A), gb = grupos(B);
+    if (ga !== gb) out.push('Grupos: ' + (ga || '(nenhum)') + ' → ' + (gb || '(nenhum)'));
+    return out;
+  }
+
+  /** Campos de regra em branco: não impedem lançar; aparecem como aviso amarelo. */
+  function camposNaoPreenchidos(R) {
+    var c = [];
+    if (R.minimoPontos == null) c.push('campo não preenchido: pontuação mínima total — tratada como sem mínimo total');
+    if (R.zeroElimina == null) c.push('campo não preenchido: se zero em disciplina elimina — regra não aplicada');
+    if (R.meta == null) c.push('campo não preenchido: meta — sem meta');
+    return c;
+  }
+
   function questoesEmBranco(blocos) {
     return mapaBlocos(blocos).map(function (bi, i) {
       return { n: i + 1, bloco: bi, gabarito: '', anulada: false, justificativa: '', marcada: '', assunto: '', confianca: '', eliminacao: false, par: '', causa: '' };
@@ -1165,7 +1215,8 @@
     arred: arred, fmtNum: fmtNum, fmtPct: fmtPct, pctValor: pctValor, lerNumero: lerNumero,
     inteiroPositivo: inteiroPositivo, inteiroNaoNegativo: inteiroNaoNegativo,
     letrasDe: letrasDe, totalQuestoes: totalQuestoes, totalPontos: totalPontos, bloqueiosLancamento: bloqueiosLancamento,
-    mapaBlocos: mapaBlocos, regrasDoConcurso: regrasDoConcurso, questoesEmBranco: questoesEmBranco, lerSequencia: lerSequencia,
+    mapaBlocos: mapaBlocos, regrasDoConcurso: regrasDoConcurso, normalizarConcurso: normalizarConcurso, mesmoConcurso: mesmoConcurso,
+    diferencasConcurso: diferencasConcurso, camposNaoPreenchidos: camposNaoPreenchidos, questoesEmBranco: questoesEmBranco, lerSequencia: lerSequencia,
     classificar: classificar, ehAcerto: ehAcerto, ehErro: ehErro, assuntoDaQuestao: assuntoDaQuestao,
     pendenciasSimulado: pendenciasSimulado, corrigir: corrigir, textoMeta: textoMeta, textoSituacao: textoSituacao,
     listarErros: listarErros, montarCiclo: montarCiclo, estadoItemA: estadoItemA, estadoRevisoesA: estadoRevisoesA,

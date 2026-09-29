@@ -59,6 +59,109 @@
     return base;
   }
 
+  /* ---------------------------------------------------------------
+   * Cadastro dos editais (botão "Carregar cadastro dos editais")
+   * EM_BRANCO = o edital não traz o valor: o campo não é preenchido
+   * (fica vazio, ou fica com o que o usuário já tiver digitado).
+   * ------------------------------------------------------------- */
+
+  var EM_BRANCO = { emBranco: true };
+
+  var EDITAIS = {
+    B: [
+      { id: 'jucurutu-rn', modo: 'linhas', linhas: {
+        "Língua Portuguesa": ["Acentuação gráfica", "Análise e interpretação de textos", "Coerência textual", "Coesão textual", "Concordância nominal", "Concordância verbal", "Emprego da crase", "Figuras de linguagem", "Ortografia oficial", "Pontuação", "Regência nominal", "Regência verbal", "Significação das palavras", "Tipos e gêneros textuais", "Uso e colocação dos pronomes"],
+        "Tecnologia na Educação": ["Ambientes virtuais de aprendizagem (AVA)", "Avaliação mediada por tecnologia", "Competência digital docente", "Cultura digital na educação", "Ensino híbrido", "Ferramentas digitais educacionais", "Inclusão digital", "Metodologias ativas com tecnologia", "Plataformas educacionais digitais", "Políticas públicas de tecnologia educacional", "Recursos educacionais digitais", "Segurança e ética digital", "Tecnologias assistivas na educação", "TIC na educação", "Uso pedagógico das mídias digitais"],
+        "Gestão Escolar": ["Conselho Escolar e Conselho Municipal de Educação", "CF art. 205 a 214", "ECA (Lei 8.069/1990)", "FUNDEB (Lei 14.113/2020)", "Gestão democrática do ensino público", "Gestão de patrimônio público escolar", "Lei de Acesso à Informação (Lei 12.527/2011)", "LDB (Lei 9.394/1996)", "PNE (Lei 13.005/2014)", "Regimento Escolar", "Responsabilidade administrativa do gestor"],
+        "Conhecimentos Profissionais (AEE)": ["Atendimento Educacional Especializado", "Público-alvo da educação especial", "Acessibilidade e eliminação de barreiras", "Adaptação e flexibilização curricular", "Plano de AEE e estudo de caso", "Sala de recursos multifuncionais", "Tecnologia assistiva", "Comunicação alternativa e aumentativa", "Libras e educação bilíngue para surdos", "Sistema Braille e recursos táteis", "Deficiências física, intelectual, auditiva e visual", "TEA, TDAH, altas habilidades e superdotação", "Desenho Universal para a Aprendizagem", "Avaliação funcional e pedagógica", "Materiais adaptados e multissensoriais", "Autonomia e participação do estudante"],
+        "Conhecimentos Pedagógicos": ["Avaliação da aprendizagem", "Currículo escolar", "Piaget", "Vygotsky", "Libâneo", "Paulo Freire", "Educação inclusiva e diversidade", "Gestão democrática da escola", "Ivani Fazenda", "Legislação educacional brasileira", "Planejamento de ensino", "Políticas públicas educacionais", "Projeto Político-Pedagógico", "Psicologia da educação", "Saviani", "Teorias da aprendizagem", "Tecnologias educacionais no ensino-aprendizagem", "Trabalho pedagógico e interdisciplinaridade", "Emília Ferreiro", "Jussara Hoffmann"]
+      } }
+    ],
+    A: [
+      { id: 'seduc-ce', modo: 'completo', dados: {
+        nome: 'SEDUC/CE', banca: 'CEV/UECE', dataProva: '2026-11-22', numAlternativas: 4, minimoPontos: 40, zeroElimina: false, meta: EM_BRANCO, alvo: 'CE',
+        blocos: [
+          { nome: 'Educação Brasileira', numQuestoes: 8, pontosPorQuestao: 1, minimoAcertos: 3, assuntos: EM_BRANCO },
+          { nome: 'Administração Pública', numQuestoes: 8, pontosPorQuestao: 1, minimoAcertos: 3, assuntos: EM_BRANCO },
+          { nome: 'Língua Portuguesa', numQuestoes: 8, pontosPorQuestao: 1, minimoAcertos: 3, assuntos: EM_BRANCO },
+          { nome: 'Leitura e Interpretação de Dados e Indicadores Educacionais', numQuestoes: 6, pontosPorQuestao: 1, minimoAcertos: 2, assuntos: EM_BRANCO },
+          { nome: 'Conhecimentos Específicos (AEE)', numQuestoes: 50, pontosPorQuestao: 1, minimoAcertos: null,
+            assuntos: ["Fundamentos legais e políticas da Educação Especial", "Educação inclusiva: fundamentos e paradigmas históricos", "Desenvolvimento humano, aprendizagem e diversidade", "Público-alvo: deficiências, TEA, altas habilidades, NEE", "AEE: conceitos, princípios, objetivos e organização", "Sala de Recursos Multifuncionais", "Prática pedagógica do professor no AEE", "PPP inclusivo e gestão da inclusão", "Currículo, avaliação e práticas inclusivas", "Plano de AEE: PAEE, PEI e PPI", "Desenho Universal para a Aprendizagem (DUA)", "Acessibilidade e Tecnologia Assistiva", "Trabalho colaborativo, família e rede de apoio"] }
+        ],
+        grupos: [{ nome: 'P1', blocos: [0, 1, 2, 3], minimoAcertos: 12 }, { nome: 'P2', blocos: [4], minimoAcertos: 20 }]
+      } },
+      { id: 'cruzeta-rn', modo: 'completo', dados: {
+        nome: 'Cruzeta/RN', banca: 'IDIB', dataProva: '2026-11-29', numAlternativas: 5, minimoPontos: EM_BRANCO, zeroElimina: true, meta: EM_BRANCO, alvo: 'CRUZETA',
+        blocos: [
+          { nome: 'Conhecimentos Específicos', numQuestoes: 25, pontosPorQuestao: 2, minimoAcertos: null,
+            assuntos: ["Fundamentos legais e políticas da Educação Especial", "Braille, Libras e Comunicação Alternativa (CAA)", "Público-alvo: deficiências, TEA, altas habilidades, NEE", "Desenvolvimento humano, aprendizagem e diversidade", "Acessibilidade e Tecnologia Assistiva", "AEE: conceitos, princípios, objetivos e organização", "Plano de AEE: PAEE, PEI e PPI", "Currículo, avaliação e práticas inclusivas", "Trabalho colaborativo, família e rede de apoio", "Educação inclusiva (fundamentos)", "Desenho Universal para a Aprendizagem (DUA)", "Mobilidade reduzida e acessibilidade física"] },
+          { nome: 'Língua Portuguesa', numQuestoes: 15, pontosPorQuestao: 2, minimoAcertos: null, assuntos: EM_BRANCO },
+          { nome: 'Raciocínio Lógico', numQuestoes: 5, pontosPorQuestao: 2, minimoAcertos: null, assuntos: EM_BRANCO },
+          { nome: 'Informática', numQuestoes: 5, pontosPorQuestao: 2, minimoAcertos: null, assuntos: EM_BRANCO }
+        ],
+        grupos: []
+      } }
+    ]
+  };
+
+  function copia(x) { return JSON.parse(JSON.stringify(x)); }
+  function porId(lista, id) { for (var i = 0; i < lista.length; i++) if (lista[i].id === id) return lista[i]; return null; }
+
+  /** Monta o concurso do edital a partir do cadastro atual (ou da semente, se o concurso tiver sido excluído). */
+  function concursoDoEdital(ed, L, atual, semente) {
+    var avisos = [];
+    if (ed.modo === 'linhas') {
+      var base = copia(atual || semente);
+      Object.keys(ed.linhas).forEach(function (nomeBloco) {
+        var b = null;
+        base.blocos.forEach(function (x) { if (x.nome === nomeBloco) b = x; });
+        if (!b) { avisos.push('Bloco "' + nomeBloco + '" não existe no cadastro atual: as linhas dele não foram carregadas.'); return; }
+        var nova = ed.linhas[nomeBloco].slice();
+        (b.assuntos || []).forEach(function (a) { if (nova.indexOf(a) < 0) nova.push(a); }); // mantém as linhas que o usuário já tinha
+        b.assuntos = nova;
+      });
+      return { concurso: base, avisos: avisos };
+    }
+    var d = ed.dados, a = atual;
+    function valor(v, campo) { return v === EM_BRANCO ? (a && a[campo] != null ? a[campo] : null) : v; }
+    return { avisos: avisos, concurso: {
+      id: ed.id, nome: a ? a.nome : d.nome, lab: L, banca: d.banca, dataProva: d.dataProva, numAlternativas: d.numAlternativas,
+      minimoPontos: valor(d.minimoPontos, 'minimoPontos'), zeroElimina: d.zeroElimina, meta: valor(d.meta, 'meta'), alvo: d.alvo,
+      blocos: d.blocos.map(function (b) {
+        var antigo = null;
+        if (a) a.blocos.forEach(function (x) { if (x.nome === b.nome) antigo = x; });
+        return { nome: b.nome, numQuestoes: b.numQuestoes, pontosPorQuestao: b.pontosPorQuestao, minimoAcertos: b.minimoAcertos,
+          assuntos: b.assuntos === EM_BRANCO ? (antigo ? (antigo.assuntos || []).slice() : []) : b.assuntos.slice() };
+      }),
+      grupos: copia(d.grupos)
+    } };
+  }
+
+  /** O que o botão vai fazer em cada concurso pré-cadastrado deste laboratório. Não altera nada. */
+  function planoEditais(labObj) {
+    var L = labObj.lab, sementes = labInicial(L).concursos;
+    return EDITAIS[L].map(function (ed) {
+      var atual = porId(labObj.concursos, ed.id), semente = porId(sementes, ed.id);
+      var r = concursoDoEdital(ed, L, atual, semente);
+      return {
+        id: ed.id, nome: r.concurso.nome, antes: atual ? copia(atual) : null, depois: r.concurso, avisos: r.avisos,
+        editado: !!atual && !global.Nucleo.mesmoConcurso(atual, semente),
+        mudancas: global.Nucleo.diferencasConcurso(atual, r.concurso)
+      };
+    });
+  }
+
+  /** Aplica o plano: troca só os concursos da lista. Simulados, sessões, revisões e caixas ficam como estão. */
+  function aplicarPlanoEditais(labObj, plano) {
+    plano.forEach(function (p) {
+      if (!p.mudancas.length) return;
+      var achou = false;
+      labObj.concursos = labObj.concursos.map(function (c) { if (c.id === p.id) { achou = true; return copia(p.depois); } return c; });
+      if (!achou) labObj.concursos.push(copia(p.depois));
+    });
+    return labObj;
+  }
+
   function geralInicial() { return { versao: 1, primeiraSessaoB: '' }; }
 
   function chaveLab(L) { return PREFIXO + 'lab' + L; }
@@ -127,7 +230,7 @@
     PREFIXO: PREFIXO,
     persistente: function () { return persistente; },
     usarBackend: usarBackend, backendMemoria: backendMemoria,
-    labInicial: labInicial, lab: lab, salvarLab: salvarLab, geral: geral, salvarGeral: salvarGeral,
+    labInicial: labInicial, lab: lab, planoEditais: planoEditais, aplicarPlanoEditais: aplicarPlanoEditais, salvarLab: salvarLab, geral: geral, salvarGeral: salvarGeral,
     novoId: novoId, agora: agora, estadoCompleto: estadoCompleto,
     exportarBackup: exportarBackup, validarBackup: validarBackup, importarBackup: importarBackup, limparTudo: limparTudo
   };

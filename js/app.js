@@ -16,7 +16,7 @@
   var FRASE_DRIVE = 'A fonte oficial é o seu Google Drive (CADERNO_DE_ERROS no Método A e 11_ESTADO_B no Método B): esta ferramenta só calcula e registra, e toda correção termina em texto pronto para colar lá.';
 
   // Estado passageiro da tela (separado por laboratório)
-  var T = { aviso: null, concEdit: { A: null, B: null }, filtroA: 'abertos', diaDrive: { A: null, B: null }, pendencias: null };
+  var T = { aviso: null, concEdit: { A: null, B: null }, planoEdital: { A: null, B: null }, filtroA: 'abertos', diaDrive: { A: null, B: null }, pendencias: null };
 
   /* ---------------------------------------------------------------
    * Utilidades
@@ -230,6 +230,8 @@
     var R = N.regrasDoConcurso(conc);
     h += '<div class="grade2"><label>Data do simulado<input type="date" data-rasc="data" value="' + esc(r.data) + '"></label>';
     h += '<label>Minutos gastos na prova<input type="number" min="1" step="1" inputmode="numeric" data-rasc="minutos" value="' + esc(r.minutos) + '"></label></div>';
+    var faltam = N.camposNaoPreenchidos(R);
+    if (faltam.length) h += alerta('amarelo', '<ul>' + faltam.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>');
     h += '<p class="suave">' + N.totalQuestoes(R.blocos) + ' questões · ' + R.numAlternativas + ' alternativas (' + N.letrasDe(R.numAlternativas).join(', ') + ') · ' + N.fmtNum(N.totalPontos(R.blocos)) + ' pontos possíveis</p></div>';
 
     h += '<div class="cartao"><h3>2. Gabarito oficial e suas marcações</h3>';
@@ -337,7 +339,8 @@
     h += '<p class="suave">Banca ' + esc(R.banca || '—') + ' · ' + sim.minutos + ' minutos de prova</p>';
     if (cor.eliminado) h += alerta('vermelho', '<strong>ELIMINADO pelas regras cadastradas.</strong><ul>' + cor.vermelho.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul>');
     else h += alerta('verde', '<strong>Não eliminado</strong> pelas regras cadastradas' + (R.minimoPontos != null ? ' (mínimo ' + N.fmtNum(R.minimoPontos) + ' pontos' + (R.zeroElimina ? '; zero em disciplina elimina' : '') + ')' : '') + '.');
-    if (cor.regraIncompleta.length) h += alerta('info', 'Regra de eliminação incompleta no cadastro: ' + esc(cor.regraIncompleta.join(', ')) + '. Confira o edital.');
+    var faltamC = N.camposNaoPreenchidos(R);
+    if (faltamC.length) h += alerta('amarelo', '<ul>' + faltamC.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>');
     if (cor.amarelo.length) h += alerta('amarelo', '<strong>Atenção — bloco com acerto abaixo de 20%:</strong><ul>' + cor.amarelo.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul>');
 
     h += '<div class="grade-num">';
@@ -739,8 +742,28 @@
    * Configurações
    * ------------------------------------------------------------- */
 
+  function htmlEditais(L) {
+    var quais = L === 'A' ? 'SEDUC/CE e Cruzeta/RN' : 'Jucurutu/RN';
+    var h = '<div class="cartao" id="editais"><h3>Carregar cadastro dos editais</h3>';
+    h += '<p class="suave">Atualiza ' + quais + ' com os dados dos editais. Não apaga nem altera simulados, sessões, revisões ou caixas já registrados. ' +
+      'Campos que o edital deixa em branco não são preenchidos (se você já tiver digitado algo neles, fica o que você digitou). ' +
+      'Os concursos do outro laboratório são carregados nas Configurações dele.</p>';
+    var plano = T.planoEdital[L];
+    if (!plano) return h + '<button type="button" class="primario" data-acao="edital-carregar">Carregar cadastro dos editais</button></div>';
+    var editados = plano.filter(function (p) { return p.editado && p.mudancas.length; });
+    h += alerta('amarelo', '<strong>Você já editou ' + editados.map(function (p) { return esc(p.nome); }).join(' e ') + '.</strong> Confira abaixo o que vai mudar e confirme de novo.');
+    plano.forEach(function (p) {
+      h += '<h4>' + esc(p.nome) + (p.editado ? ' (editado por você)' : '') + '</h4>';
+      h += p.mudancas.length ? '<ul>' + p.mudancas.map(function (m) { return '<li>' + esc(m) + '</li>'; }).join('') + '</ul>' : '<p>Nada muda.</p>';
+      if (p.avisos.length) h += alerta('amarelo', p.avisos.map(esc).join('<br>'));
+    });
+    h += '<div class="acoes"><button type="button" class="primario" data-acao="edital-aplicar">Confirmar e carregar</button><button type="button" data-acao="edital-cancelar">Cancelar</button></div>';
+    return h + '</div>';
+  }
+
   function telaConfig(L, lab) {
     var h = '<h2>Configurações — ' + LABS[L].nome + '</h2>';
+    h += htmlEditais(L);
     if (L === 'A') {
       var c = lab.config;
       h += '<form class="cartao" data-form="config-a"><h3>Revisão D0/D2/D7/D21</h3><p class="suave">Dias depois da data do erro (ou do início do novo ciclo).</p><div class="grade3">';
@@ -1141,12 +1164,37 @@
       render(true);
     },
 
+    'edital-carregar': function (el, L) {
+      if (!confirm('Carregar o cadastro dos editais em ' + (L === 'A' ? 'SEDUC/CE e Cruzeta/RN' : 'Jucurutu/RN') + '?\n\nSimulados, sessões, revisões e caixas já registrados não mudam.')) return;
+      var plano = D.planoEditais(D.lab(L));
+      if (!plano.some(function (p) { return p.mudancas.length; })) { avisar('ok', 'O cadastro dos editais já está carregado: nada muda.'); render(true); return; }
+      if (plano.some(function (p) { return p.editado && p.mudancas.length; })) {
+        T.planoEdital[L] = plano; render(true);
+        var alvo = document.getElementById('editais'); if (alvo) alvo.scrollIntoView({ block: 'start' });
+        return;
+      }
+      aplicarEditais(L);
+    },
+    'edital-aplicar': function (el, L) { aplicarEditais(L); },
+    'edital-cancelar': function (el, L) { T.planoEdital[L] = null; avisar('ok', 'Nada foi carregado.'); render(true); },
+
     'config-padrao': function (el, L) {
       mutar(L, function (lab) { lab.config = JSON.parse(JSON.stringify(N.CONFIG_PADRAO[L])); });
       avisar('ok', 'Configuração padrão restaurada.');
       render(true);
     }
   };
+
+  function aplicarEditais(L) {
+    var mudou = mutar(L, function (lab) {
+      var plano = D.planoEditais(lab); // refeito na hora, sobre o cadastro atual
+      D.aplicarPlanoEditais(lab, plano);
+      return plano.filter(function (p) { return p.mudancas.length; }).map(function (p) { return p.nome; });
+    });
+    T.planoEdital[L] = null; T.concEdit[L] = null;
+    avisar('ok', mudou.length ? 'Cadastro dos editais carregado: ' + mudou.join(', ') + '. Simulados, sessões, revisões e caixas não foram alterados.' : 'O cadastro dos editais já está carregado: nada muda.');
+    render(true);
+  }
 
   /* ---------------------------------------------------------------
    * Formulários (submit)
